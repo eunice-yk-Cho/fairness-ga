@@ -1,0 +1,13 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Data (downloaded by scripts/download_adult.py)
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/

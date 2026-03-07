@@ -1,0 +1,52 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{booktabs}
+
+\title{Genetic Algorithm-Based Fairness Violation Discovery}
+\author{Your Name}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+This study proposes a genetic algorithm (GA) framework
+to efficiently discover discriminatory instances in
+binary classification models.
+
+\section{Problem Definition}
+
+Let $f(x)$ denote a classifier and $T_s(x)$ the sensitive attribute flip operator.
+
+\begin{equation}
+D(x) = |P(y=1|x) - P(y=1|T_s(x))|
+\end{equation}
+
+\section{Method}
+
+\subsection{Genetic Algorithm}
+
+Population:
+\[
+\mathcal{P}^{(t)} = \{x_1, ..., x_N\}
+\]
+
+Objective:
+\[
+\max_x D(x)
+\]
+
+\section{Experiments}
+
+We compare GA with Random Search using 30 repeated trials.
+
+\section{Statistical Test}
+
+Wilcoxon signed-rank test is conducted with $\alpha=0.05$.
+
+\section{Conclusion}
+
+GA significantly outperforms random exploration.
+
+\end{document}
