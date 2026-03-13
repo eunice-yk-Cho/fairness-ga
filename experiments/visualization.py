@@ -23,6 +23,12 @@ else:
     rs_scores = np.array([])
     has_rs = False
 threshold = config.DISCRIMINATION_THRESHOLD
+ga_trial_counts_path = _root / "ga_trial_counts.npy"
+rs_trial_counts_path = _root / "random_trial_counts.npy"
+has_trial_counts = ga_trial_counts_path.exists() and rs_trial_counts_path.exists()
+if has_trial_counts:
+    ga_trial_counts = np.load(ga_trial_counts_path)
+    rs_trial_counts = np.load(rs_trial_counts_path)
 
 # 한글 폰트 설정 (시스템에 없으면 기본 폰트 사용)
 plt.rcParams["font.family"] = ["Malgun Gothic", "NanumGothic", "DejaVu Sans"]
@@ -73,21 +79,29 @@ ax.grid(True, alpha=0.3, axis="y")
 
 # 4) 요약 통계 텍스트
 ax = axes[1, 1]
-ax.axis("off")
-summary = [
-    "【요약 통계】",
-    f"  GA:     min={ga_scores.min():.3f}, max={ga_scores.max():.3f}, mean={ga_scores.mean():.3f}",
-]
-if has_rs and len(rs_scores) > 0:
-    summary.append(f"  Random: min={rs_scores.min():.3f}, max={rs_scores.max():.3f}, mean={rs_scores.mean():.3f}")
-summary.extend([
-    "",
-    f"  기준(threshold) = {threshold}",
-    f"  GA 차별 사례 수:     {ga_count}",
-])
-if has_rs:
-    summary.append(f"  Random 차별 사례 수: {rs_count}")
-ax.text(0.1, 0.9, "\n".join(summary), transform=ax.transAxes, fontsize=11, verticalalignment="top", family="monospace")
+if has_trial_counts:
+    bp = ax.boxplot([ga_trial_counts, rs_trial_counts], tick_labels=["GA", "Random"], patch_artist=True, showfliers=False)
+    bp["boxes"][0].set_facecolor("C0")
+    bp["boxes"][1].set_facecolor("C1")
+    ax.set_ylabel("불공정 사례 수 / trial")
+    ax.set_title("반복 실험 분포 (trial-level)")
+    ax.grid(True, alpha=0.3, axis="y")
+else:
+    ax.axis("off")
+    summary = [
+        "【요약 통계】",
+        f"  GA:     min={ga_scores.min():.3f}, max={ga_scores.max():.3f}, mean={ga_scores.mean():.3f}",
+    ]
+    if has_rs and len(rs_scores) > 0:
+        summary.append(f"  Random: min={rs_scores.min():.3f}, max={rs_scores.max():.3f}, mean={rs_scores.mean():.3f}")
+    summary.extend([
+        "",
+        f"  기준(threshold) = {threshold}",
+        f"  GA 차별 사례 수:     {ga_count}",
+    ])
+    if has_rs:
+        summary.append(f"  Random 차별 사례 수: {rs_count}")
+    ax.text(0.1, 0.9, "\n".join(summary), transform=ax.transAxes, fontsize=11, verticalalignment="top", family="monospace")
 
 plt.suptitle("유전 알고리즘 vs 무작위 탐색: 공정성 결함 탐색 결과", fontsize=12)
 plt.tight_layout()

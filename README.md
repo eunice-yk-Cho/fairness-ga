@@ -60,7 +60,36 @@ python scripts/download_adult.py
 python experiments/run_experiment.py
 ```
 
-출력: GA vs Random Search의 차별 탐지 건수 비교
+기본 설정:
+- Trial 수: `30` (`src/config.py`의 `N_TRIALS`)
+- Trial 당 평가 예산: `50,000` (`POPULATION_SIZE * GENERATIONS`)
+- GA와 Random Search 모두 **동일 예산**으로 비교
+
+빠른 점검 실행 예시:
+```bash
+python experiments/run_experiment.py --trials 3 --budget 5000
+```
+
+저장 파일:
+- `ga_results.npy`, `random_results.npy` (전체 점수)
+- `ga_trial_counts.npy`, `random_trial_counts.npy` (trial별 불공정 사례 수)
+- `ga_trial_means.npy`, `random_trial_means.npy` (trial별 평균 점수)
+
+### 5. 통계 검정
+
+```bash
+python experiments/statistical_test.py
+```
+
+Wilcoxon signed-rank test로 GA > Random 가설을 검정합니다.
+
+### 6. 시각화
+
+```bash
+python experiments/visualization.py
+```
+
+출력: `experiments/fairness_ga_results.png`
 
 ---
 
@@ -72,6 +101,8 @@ conda activate fairness-ga   # 매번 작업 전에 환경 활성화
 pip install -r requirements.txt
 python scripts/download_adult.py
 python experiments/run_experiment.py
+python experiments/statistical_test.py
+python experiments/visualization.py
 ```
 
 최초 한 번만: `conda create -n fairness-ga python=3.10 -y`

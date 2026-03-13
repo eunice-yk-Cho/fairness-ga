@@ -1,52 +1,119 @@
 \documentclass{article}
+\usepackage{times}
 \usepackage{amsmath}
 \usepackage{graphicx}
 \usepackage{booktabs}
 
 \title{Genetic Algorithm-Based Fairness Violation Discovery}
-\author{Your Name}
+\author{Student Name}
 \date{}
 
 \begin{document}
 \maketitle
 
 \section{Introduction}
-This study proposes a genetic algorithm (GA) framework
-to efficiently discover discriminatory instances in
-binary classification models.
+Machine learning models used in decision support can exhibit unfair behavior across sensitive attributes.
+In this project, we target fairness testing for tabular binary classifiers and investigate whether a search-based
+approach can discover discriminatory cases more effectively than random search.
+The selected problem is \textit{AI Model Fairness Testing} from the module baseline list.
+
+\section{Related Work}
+Fairness testing and bias discovery are typically approached in two ways:
+\textit{(i)} group-level fairness metrics (e.g., demographic parity, equalized odds) and
+\textit{(ii)} individual-level unfairness discovery by perturbing sensitive attributes.
+Search-based software engineering methods (e.g., random search, evolutionary search) are suitable when
+the input space is large and objective functions are non-linear.
+Random search is simple and easy to reproduce, but often inefficient under limited testing budget.
+Genetic algorithms can exploit high-fitness areas via selection and crossover, but may incur higher runtime and
+require careful parameter tuning.
 
 \section{Problem Definition}
-
 Let $f(x)$ denote a classifier and $T_s(x)$ the sensitive attribute flip operator.
-
 \begin{equation}
 D(x) = |P(y=1|x) - P(y=1|T_s(x))|
 \end{equation}
+where $D(x)$ is the individual discrimination score. A higher value indicates stronger potential unfairness.
 
 \section{Method}
-
 \subsection{Genetic Algorithm}
-
 Population:
 \[
 \mathcal{P}^{(t)} = \{x_1, ..., x_N\}
 \]
-
 Objective:
 \[
 \max_x D(x)
 \]
+The implementation uses tournament selection, uniform crossover, and mutation.
+For comparability, we enforce an \textbf{equal evaluation budget} between GA and Random Search.
+If population size is $N$ and generations are $G$, then each GA trial evaluates $N \times G$ candidates.
+Random Search is configured with the same number of evaluations per trial.
 
 \section{Experiments}
+\subsection{Setup}
+Dataset: UCI Adult dataset.
+Sensitive attribute: \texttt{sex}.
+Predictive model: RandomForestClassifier.
+Discrimination threshold: 0.2.
+Number of independent trials: 30.
+Baseline: Random Search.
+Primary metric: number of discovered discriminatory cases ($D(x) > 0.2$) per trial.
+Secondary metric: mean discrimination score per trial.
 
-We compare GA with Random Search using 30 repeated trials.
+\subsection{Procedure}
+For each trial, GA and Random Search run with the same budget.
+Per-trial metrics are stored in:
+\texttt{ga\_trial\_counts.npy}, \texttt{random\_trial\_counts.npy},
+\texttt{ga\_trial\_means.npy}, \texttt{random\_trial\_means.npy}.
+Aggregated raw scores are also exported for visualization.
 
 \section{Statistical Test}
+Wilcoxon signed-rank tests are used at $\alpha = 0.05$ for paired trial results.
+Alternative hypothesis: GA $>$ Random Search.
+Two paired tests are performed:
+\begin{itemize}
+    \item discriminatory cases per trial
+    \item mean discrimination score per trial
+\end{itemize}
 
-Wilcoxon signed-rank test is conducted with $\alpha=0.05$.
+\section{Results}
+Quantitative results should be reported from the generated trial files and statistical test output.
+Table~\ref{tab:results-template} is the reporting template.
+
+\begin{table}[h]
+    \centering
+    \caption{GA vs Random Search (30 trials)}
+    \label{tab:results-template}
+    \begin{tabular}{lcc}
+        \toprule
+        Metric & GA (mean$\pm$std) & Random (mean$\pm$std) \\
+        \midrule
+        Discriminatory cases/trial & \textit{TBD} & \textit{TBD} \\
+        Mean discrimination score/trial & \textit{TBD} & \textit{TBD} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Visualization output is saved as \texttt{experiments/fairness\_ga\_results.png}.
+
+\section{Reflection}
+Current limitations include sensitivity to GA hyperparameters, potential mismatch between synthetic sampled inputs
+and realistic data manifold, and dependence on one dataset/system.
+Future improvements include multi-objective optimization, constraint-aware sampling, and cross-dataset validation.
 
 \section{Conclusion}
+This project provides a reproducible fairness-testing toolchain that compares GA and Random Search under equal
+search budgets and repeated trials. The final claim regarding superiority should be made based on the reported
+paired statistical tests.
 
-GA significantly outperforms random exploration.
+\section{Artifact}
+Code repository: \texttt{<REPLACE-WITH-PUBLIC-REPO-URL>}\\
+Raw result files are generated in the project root and can be verified by rerunning:
+\texttt{python experiments/run\_experiment.py}.
+
+\section{References}
+[1] S. Bird et al., ``Fairness and Machine Learning,'' fairmlbook.org.\\
+[2] J. H. Holland, \textit{Adaptation in Natural and Artificial Systems}.\\
+[3] F. Wilcoxon, ``Individual comparisons by ranking methods,'' \textit{Biometrics Bulletin}, 1945.
 
 \end{document}
