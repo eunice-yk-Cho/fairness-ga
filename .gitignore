@@ -11,3 +11,12 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+
+# Report
+criteria.txt
+instruction.txt
+report.tex
+report.pdf
+manual.pdf
+requirements.pdf
+replicate.pdf
