@@ -1,47 +1,65 @@
+# -*- coding: utf-8 -*-
+import json
 import numpy as np
 from scipy.stats import wilcoxon
 from pathlib import Path
 
 _root = Path(__file__).resolve().parent.parent
+_out_txt = _root / "experiments" / "stat_test_summary.txt"
+_combined_path = _root / "experiments" / "results" / "combined_results.json"
 
-ga_counts_path = _root / "ga_trial_counts.npy"
-rs_counts_path = _root / "random_trial_counts.npy"
-ga_means_path = _root / "ga_trial_means.npy"
-rs_means_path = _root / "random_trial_means.npy"
+def safe_wilcoxon_greater(ga, rs):
+    ga = np.asarray(ga, dtype=float)
+    rs = np.asarray(rs, dtype=float)
+    if len(ga) != len(rs) or len(ga) == 0:
+        raise ValueError("GA and Random arrays must have the same length.")
+    diff = ga - rs
+    if np.allclose(diff, 0.0):
+        return 0.0, 1.0, "all_zero_diff"
+    stat, p = wilcoxon(ga, rs, alternative="greater")
+    return float(stat), float(p), "ok"
 
-if ga_counts_path.exists() and rs_counts_path.exists():
-    ga_counts = np.load(ga_counts_path)
-    rs_counts = np.load(rs_counts_path)
-    stat_c, p_c = wilcoxon(ga_counts, rs_counts, alternative="greater")
+if not _combined_path.exists():
+    print(f"Missing file: {_combined_path}")
+    print("Run `python experiments/run_experiment.py` first.")
+    raise SystemExit(1)
 
-    print("[Metric] Discriminatory cases per trial")
-    print("GA mean±std:", f"{ga_counts.mean():.2f} ± {ga_counts.std():.2f}")
-    print("RS mean±std:", f"{rs_counts.mean():.2f} ± {rs_counts.std():.2f}")
-    print("Wilcoxon statistic:", stat_c)
-    print("p-value:", p_c)
+combined = json.loads(_combined_path.read_text(encoding="utf-8"))
+metric_keys = ["individual_count", "individual_mean", "demographic_parity", "equalized_odds"]
+
+lines = []
+for dataset_key, info in combined.get("datasets", {}).items():
+    lines.append(f"[Dataset] {dataset_key}")
+    print(f"[Dataset] {dataset_key}")
+    metrics = info.get("metrics", {})
+
+    for metric_key in metric_keys:
+        ga = np.asarray(metrics.get(metric_key, {}).get("ga", []), dtype=float)
+        rs = np.asarray(metrics.get(metric_key, {}).get("rs", []), dtype=float)
+        if len(ga) == 0 or len(rs) == 0:
+            continue
+
+        stat, p, mode = safe_wilcoxon_greater(ga, rs)
+        line_block = [
+            f"  [Metric] {metric_key}",
+            f"    N trials: {len(ga)}",
+            f"    GA mean±std: {ga.mean():.4f} ± {ga.std():.4f}",
+            f"    RS mean±std: {rs.mean():.4f} ± {rs.std():.4f}",
+            f"    Mean difference (GA-RS): {(ga - rs).mean():.4f}",
+            f"    Win rate (GA>RS): {np.mean(ga > rs):.3f}",
+            f"    Wilcoxon statistic: {stat}",
+            f"    p-value: {p}",
+        ]
+        if mode == "all_zero_diff":
+            line_block.append("    Note: All paired differences are zero; p=1.0.")
+        line_block.append("")
+
+        lines.extend(line_block)
+        for line in line_block:
+            print(line)
+
+    lines.append("")
     print()
 
-if ga_means_path.exists() and rs_means_path.exists():
-    ga_means = np.load(ga_means_path)
-    rs_means = np.load(rs_means_path)
-    stat_m, p_m = wilcoxon(ga_means, rs_means, alternative="greater")
-
-    print("[Metric] Mean discrimination score per trial")
-    print("GA mean±std:", f"{ga_means.mean():.4f} ± {ga_means.std():.4f}")
-    print("RS mean±std:", f"{rs_means.mean():.4f} ± {rs_means.std():.4f}")
-    print("Wilcoxon statistic:", stat_m)
-    print("p-value:", p_m)
-    print()
-
-if not (ga_counts_path.exists() and rs_counts_path.exists()) and not (ga_means_path.exists() and rs_means_path.exists()):
-    ga_results = np.load(_root / "ga_results.npy")
-    random_results = np.load(_root / "random_results.npy")
-    if len(ga_results) != len(random_results):
-        print("[Fallback] Raw score comparison skipped")
-        print("ga_results and random_results have different lengths.")
-        print("Run `python experiments/run_experiment.py` to regenerate matched trial outputs.")
-        raise SystemExit(1)
-    stat, p = wilcoxon(ga_results, random_results, alternative="greater")
-    print("[Fallback] Raw score comparison")
-    print("Wilcoxon statistic:", stat)
-    print("p-value:", p)
+_out_txt.write_text("\n".join(lines), encoding="utf-8")
+print(f"Saved: {_out_txt}")

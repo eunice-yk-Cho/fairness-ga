@@ -1,9 +1,15 @@
+# -*- coding: utf-8 -*-
 """
-GA vs Random Search 차별 점수 분포 시각화.
+고급 실험 결과 시각화:
+- trial-level fairness metrics (GA vs Random)
+- convergence curves
+- (optional) hyperparameter sensitivity
 프로젝트 루트에서 실행: python experiments/visualization.py
 """
 import sys
 from pathlib import Path
+import argparse
+import json
 
 _root = Path(__file__).resolve().parent.parent
 if str(_root) not in sys.path:
@@ -11,100 +17,140 @@ if str(_root) not in sys.path:
 
 import numpy as np
 import matplotlib.pyplot as plt
-from src import config
 
-# 결과 로드 (루트 기준)
-ga_scores = np.load(_root / "ga_results.npy")
-rs_path = _root / "random_results.npy"
-if rs_path.exists():
-    rs_scores = np.load(rs_path)
-    has_rs = True
-else:
-    rs_scores = np.array([])
-    has_rs = False
-threshold = config.DISCRIMINATION_THRESHOLD
-ga_trial_counts_path = _root / "ga_trial_counts.npy"
-rs_trial_counts_path = _root / "random_trial_counts.npy"
-has_trial_counts = ga_trial_counts_path.exists() and rs_trial_counts_path.exists()
-if has_trial_counts:
-    ga_trial_counts = np.load(ga_trial_counts_path)
-    rs_trial_counts = np.load(rs_trial_counts_path)
+parser = argparse.ArgumentParser(description="Visualize advanced experiment results.")
+parser.add_argument("--dataset", type=str, default="adult", help="Dataset key under experiments/results/")
+args = parser.parse_args()
+dataset_key = args.dataset
+
+results_dir = _root / "experiments" / "results" / dataset_key
+metrics_path = results_dir / "trial_metrics.npz"
+conv_path = results_dir / "convergence.npz"
+sensitivity_path = results_dir / "sensitivity.json"
+
+if not metrics_path.exists() or not conv_path.exists():
+    print(f"Missing result files in: {results_dir}")
+    print("Run `python experiments/run_experiment.py` first.")
+    raise SystemExit(1)
+
+trial_metrics = np.load(metrics_path)
+conv = np.load(conv_path)
 
 # 한글 폰트 설정 (시스템에 없으면 기본 폰트 사용)
 plt.rcParams["font.family"] = ["Malgun Gothic", "NanumGothic", "DejaVu Sans"]
 
 fig, axes = plt.subplots(2, 2, figsize=(10, 8))
 
-# 1) 히스토그램: GA vs Random, 기준선
+# 1) Trial-level metrics boxplot
 ax = axes[0, 0]
-ax.hist(ga_scores, bins=50, alpha=0.6, label=f"GA (n={len(ga_scores):,})", color="C0", density=True)
-if has_rs and len(rs_scores) > 0:
-    ax.hist(rs_scores, bins=50, alpha=0.6, label=f"Random (n={len(rs_scores):,})", color="C1", density=True)
-ax.axvline(threshold, color="red", linestyle="--", linewidth=2, label=f"기준 (>{threshold})")
-ax.set_xlabel("차별 점수 (Discrimination Score)")
-ax.set_ylabel("밀도")
-ax.set_title("차별 점수 분포")
-ax.legend()
-ax.grid(True, alpha=0.3)
+metric_order = ["individual_count", "individual_mean", "demographic_parity", "equalized_odds"]
+ga_data = [trial_metrics[f"ga_{m}"] for m in metric_order]
+rs_data = [trial_metrics[f"rs_{m}"] for m in metric_order]
+x = np.arange(len(metric_order))
 
-# 2) 박스플롯: GA vs Random
+ga_pos = x - 0.18
+rs_pos = x + 0.18
+for i in range(len(metric_order)):
+    ax.boxplot(ga_data[i], positions=[ga_pos[i]], widths=0.3, patch_artist=True, showfliers=False,
+               boxprops=dict(facecolor="C0", alpha=0.7))
+    ax.boxplot(rs_data[i], positions=[rs_pos[i]], widths=0.3, patch_artist=True, showfliers=False,
+               boxprops=dict(facecolor="C1", alpha=0.7))
+ax.set_xticks(x)
+ax.set_xticklabels(["ID count", "ID mean", "DP diff", "EO diff"])
+ax.set_title("Trial-level fairness metrics")
+ax.grid(True, alpha=0.3, axis="y")
+ax.plot([], [], color="C0", linewidth=8, alpha=0.7, label="GA")
+ax.plot([], [], color="C1", linewidth=8, alpha=0.7, label="Random")
+ax.legend(loc="upper right")
+
+# 2) Convergence (best)
 ax = axes[0, 1]
-data_for_box = [ga_scores]
-labels_box = ["GA"]
-if has_rs and len(rs_scores) > 0:
-    data_for_box.append(rs_scores)
-    labels_box.append("Random Search")
-bp = ax.boxplot(data_for_box, labels=labels_box, patch_artist=True, showfliers=False)
-for i, box in enumerate(bp["boxes"]):
-    box.set_facecolor(["C0", "C1"][i % 2])
-ax.axhline(threshold, color="red", linestyle="--", linewidth=1.5, label=f"기준 {threshold}")
-ax.set_ylabel("차별 점수")
-ax.set_title("점수 분포 비교 (박스플롯)")
+ga_best = conv["ga_best"]
+rs_best = conv["rs_best"]
+steps = np.arange(1, ga_best.shape[1] + 1)
+ax.plot(steps, ga_best.mean(axis=0), color="C0", label="GA best")
+ax.fill_between(
+    steps,
+    ga_best.mean(axis=0) - ga_best.std(axis=0),
+    ga_best.mean(axis=0) + ga_best.std(axis=0),
+    color="C0",
+    alpha=0.2,
+)
+ax.plot(steps, rs_best.mean(axis=0), color="C1", label="Random best")
+ax.fill_between(
+    steps,
+    rs_best.mean(axis=0) - rs_best.std(axis=0),
+    rs_best.mean(axis=0) + rs_best.std(axis=0),
+    color="C1",
+    alpha=0.2,
+)
+ax.set_title("Convergence (best per chunk)")
+ax.set_xlabel("Chunk / generation")
+ax.set_ylabel("Discrimination score")
+ax.grid(True, alpha=0.3)
 ax.legend()
-ax.grid(True, alpha=0.3, axis="y")
 
-# 3) 기준 초과 개수 (Search Efficiency)
-ax = axes[1, 0]
-ga_count = int(np.sum(ga_scores > threshold))
-rs_count = int(np.sum(rs_scores > threshold)) if has_rs else 0
-bar_labels = ["GA", "Random Search"] if has_rs else ["GA"]
-bar_values = [ga_count, rs_count] if has_rs else [ga_count]
-bar_colors = ["C0", "C1"] if has_rs else ["C0"]
-bars = ax.bar(bar_labels, bar_values, color=bar_colors, edgecolor="black", linewidth=1.2)
-ax.set_ylabel("차별 사례 수 (score > {})".format(threshold))
-ax.set_title("Search Efficiency (불공정 사례 탐지 개수)")
-for b in bars:
-    ax.text(b.get_x() + b.get_width() / 2, b.get_height() + 0.5, str(int(b.get_height())), ha="center", fontsize=12)
-ax.grid(True, alpha=0.3, axis="y")
-
-# 4) 요약 통계 텍스트
+# 3) Convergence (mean)
 ax = axes[1, 1]
-if has_trial_counts:
-    bp = ax.boxplot([ga_trial_counts, rs_trial_counts], tick_labels=["GA", "Random"], patch_artist=True, showfliers=False)
-    bp["boxes"][0].set_facecolor("C0")
-    bp["boxes"][1].set_facecolor("C1")
-    ax.set_ylabel("불공정 사례 수 / trial")
-    ax.set_title("반복 실험 분포 (trial-level)")
-    ax.grid(True, alpha=0.3, axis="y")
+ga_mean = conv["ga_mean"]
+rs_mean = conv["rs_mean"]
+steps = np.arange(1, ga_mean.shape[1] + 1)
+ax.plot(steps, ga_mean.mean(axis=0), color="C0", label="GA mean")
+ax.fill_between(
+    steps,
+    ga_mean.mean(axis=0) - ga_mean.std(axis=0),
+    ga_mean.mean(axis=0) + ga_mean.std(axis=0),
+    color="C0",
+    alpha=0.2,
+)
+ax.plot(steps, rs_mean.mean(axis=0), color="C1", label="Random mean")
+ax.fill_between(
+    steps,
+    rs_mean.mean(axis=0) - rs_mean.std(axis=0),
+    rs_mean.mean(axis=0) + rs_mean.std(axis=0),
+    color="C1",
+    alpha=0.2,
+)
+ax.set_title("Convergence (mean per chunk)")
+ax.set_xlabel("Chunk / generation")
+ax.set_ylabel("Discrimination score")
+ax.grid(True, alpha=0.3)
+ax.legend()
+
+# 4) Optional sensitivity heatmap or text summary
+ax = axes[1, 0]
+if sensitivity_path.exists():
+    records = json.loads(sensitivity_path.read_text(encoding="utf-8"))
+    pop_sizes = sorted({int(r["population_size"]) for r in records})
+    mutation_rates = sorted({float(r["mutation_rate"]) for r in records})
+    heat = np.zeros((len(pop_sizes), len(mutation_rates)))
+    for r in records:
+        i = pop_sizes.index(int(r["population_size"]))
+        j = mutation_rates.index(float(r["mutation_rate"]))
+        heat[i, j] = float(r["mean_discriminatory_cases"])
+    im = ax.imshow(heat, cmap="viridis", aspect="auto")
+    ax.set_xticks(np.arange(len(mutation_rates)))
+    ax.set_xticklabels([f"{m:.2f}" for m in mutation_rates])
+    ax.set_yticks(np.arange(len(pop_sizes)))
+    ax.set_yticklabels([str(p) for p in pop_sizes])
+    ax.set_xlabel("Mutation rate")
+    ax.set_ylabel("Population size")
+    ax.set_title("Sensitivity (mean ID cases)")
+    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 else:
     ax.axis("off")
-    summary = [
-        "【요약 통계】",
-        f"  GA:     min={ga_scores.min():.3f}, max={ga_scores.max():.3f}, mean={ga_scores.mean():.3f}",
-    ]
-    if has_rs and len(rs_scores) > 0:
-        summary.append(f"  Random: min={rs_scores.min():.3f}, max={rs_scores.max():.3f}, mean={rs_scores.mean():.3f}")
-    summary.extend([
-        "",
-        f"  기준(threshold) = {threshold}",
-        f"  GA 차별 사례 수:     {ga_count}",
-    ])
-    if has_rs:
-        summary.append(f"  Random 차별 사례 수: {rs_count}")
-    ax.text(0.1, 0.9, "\n".join(summary), transform=ax.transAxes, fontsize=11, verticalalignment="top", family="monospace")
+    ax.text(
+        0.05,
+        0.95,
+        "Sensitivity results not found.\nRun with --with-sensitivity.",
+        transform=ax.transAxes,
+        va="top",
+        fontsize=11,
+    )
 
-plt.suptitle("유전 알고리즘 vs 무작위 탐색: 공정성 결함 탐색 결과", fontsize=12)
+plt.suptitle(f"Advanced fairness results: {dataset_key}", fontsize=12)
 plt.tight_layout()
-plt.savefig(_root / "experiments" / "fairness_ga_results.png", dpi=150, bbox_inches="tight")
-print(f"저장: {_root / 'experiments' / 'fairness_ga_results.png'}")
+out_path = _root / "experiments" / f"fairness_ga_results_{dataset_key}.png"
+plt.savefig(out_path, dpi=150, bbox_inches="tight")
+print(f"저장: {out_path}")
 plt.show()

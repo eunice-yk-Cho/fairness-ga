@@ -1,6 +1,9 @@
+# -*- coding: utf-8 -*-
 import sys
 from pathlib import Path
 import argparse
+import json
+from types import SimpleNamespace
 
 # 프로젝트 루트를 경로에 추가 (python experiments/run_experiment.py 실행 시 src 인식)
 _root = Path(__file__).resolve().parent.parent
@@ -14,70 +17,222 @@ from src.model import train_model
 from src.utils import compute_feature_ranges, make_sampler
 from src.random_search import random_search
 from src.genetic_algorithm import GeneticAlgorithm
-from src.metrics import search_efficiency
+from src.metrics import (
+    search_efficiency,
+    demographic_parity_difference,
+    equalized_odds_difference_proxy,
+)
 
-parser = argparse.ArgumentParser(description="Run GA vs Random fairness experiment with matched budgets.")
+def _parse_csv_list(raw, cast):
+    return [cast(x.strip()) for x in raw.split(",") if x.strip()]
+
+def _ga_config(population_size, mutation_rate):
+    return SimpleNamespace(
+        POPULATION_SIZE=population_size,
+        GENERATIONS=max(1, int(np.ceil(config.evaluation_budget() / float(population_size)))),
+        TOURNAMENT_K=config.TOURNAMENT_K,
+        MUTATION_RATE=mutation_rate,
+    )
+
+def _trial_metrics(model, details, sensitive_index):
+    scores = np.asarray(details["scores"])
+    samples = np.asarray(details["samples"])
+    return {
+        "individual_count": int(search_efficiency(scores, config.DISCRIMINATION_THRESHOLD)),
+        "individual_mean": float(np.mean(scores)) if len(scores) else 0.0,
+        "demographic_parity": demographic_parity_difference(model, samples, sensitive_index),
+        "equalized_odds": equalized_odds_difference_proxy(model, samples, sensitive_index),
+    }
+
+def _run_ga_trial(model, sampler, sensitive_index, feature_ranges, budget, ga_conf):
+    ga = GeneticAlgorithm(
+        model=model,
+        sampler=sampler,
+        sensitive_index=sensitive_index,
+        config=ga_conf,
+        feature_ranges=feature_ranges,
+    )
+    return ga.run(n_evals=budget, return_details=True)
+
+def _run_sensitivity(model, sampler, sensitive_index, feature_ranges, budget, trials, pop_sizes, mutation_rates):
+    records = []
+    for pop_size in pop_sizes:
+        for mutation_rate in mutation_rates:
+            ga_conf = _ga_config(pop_size, mutation_rate)
+            trial_counts = []
+            trial_means = []
+            for t in range(trials):
+                trial_seed = config.RANDOM_SEED + 10_000 + t + (pop_size * 100) + int(mutation_rate * 1000)
+                config.set_seed(trial_seed)
+                details = _run_ga_trial(model, sampler, sensitive_index, feature_ranges, budget, ga_conf)
+                trial_counts.append(int(search_efficiency(details["scores"], config.DISCRIMINATION_THRESHOLD)))
+                trial_means.append(float(np.mean(details["scores"])))
+            records.append({
+                "population_size": int(pop_size),
+                "mutation_rate": float(mutation_rate),
+                "mean_discriminatory_cases": float(np.mean(trial_counts)),
+                "std_discriminatory_cases": float(np.std(trial_counts)),
+                "mean_score": float(np.mean(trial_means)),
+                "std_score": float(np.std(trial_means)),
+            })
+    return records
+
+parser = argparse.ArgumentParser(description="Run advanced GA fairness experiments.")
 parser.add_argument("--trials", type=int, default=config.N_TRIALS, help="Number of independent trials.")
 parser.add_argument("--budget", type=int, default=config.evaluation_budget(), help="Evaluations per method per trial.")
+parser.add_argument(
+    "--datasets",
+    type=str,
+    default=",".join(config.DEFAULT_DATASETS),
+    help="Comma-separated dataset keys (adult, compas, german).",
+)
+parser.add_argument("--ga-population", type=int, default=config.POPULATION_SIZE, help="GA population size.")
+parser.add_argument("--ga-mutation", type=float, default=config.MUTATION_RATE, help="GA mutation rate.")
+parser.add_argument("--with-sensitivity", action="store_true", help="Run hyperparameter sensitivity analysis.")
+parser.add_argument("--sensitivity-trials", type=int, default=5, help="Trials per sensitivity setting.")
+parser.add_argument(
+    "--sensitivity-pop-sizes",
+    type=str,
+    default=",".join(str(x) for x in config.SENSITIVITY_POPULATION_SIZES),
+    help="Comma-separated population sizes.",
+)
+parser.add_argument(
+    "--sensitivity-mutation-rates",
+    type=str,
+    default=",".join(str(x) for x in config.SENSITIVITY_MUTATION_RATES),
+    help="Comma-separated mutation rates.",
+)
 args = parser.parse_args()
 
 config.set_seed()
-
-print("[1/6] 데이터 로드 중...")
-X_train, X_test, y_train, y_test, sensitive_index = \
-    load_and_preprocess("data/adult.csv", config.SENSITIVE_ATTR)
-print(f"      train {X_train.shape[0]}건, test {X_test.shape[0]}건, sensitive_index={sensitive_index}")
-
-print("[2/6] 모델 학습 중...")
-model = train_model(X_train, y_train)
-print("      완료")
-
-feature_ranges = compute_feature_ranges(X_train)
-sampler = make_sampler(feature_ranges)
-
 budget = args.budget
 n_trials = args.trials
+dataset_keys = _parse_csv_list(args.datasets, str)
+ga_conf = _ga_config(args.ga_population, args.ga_mutation)
+pop_sizes = _parse_csv_list(args.sensitivity_pop_sizes, int)
+mutation_rates = _parse_csv_list(args.sensitivity_mutation_rates, float)
+results_root = _root / "experiments" / "results"
+results_root.mkdir(parents=True, exist_ok=True)
 
-print(f"[3/6] 반복 실험 실행 중... (trial={n_trials}, budget={budget}/trial)")
-ga_trial_counts = []
-rs_trial_counts = []
-ga_trial_means = []
-rs_trial_means = []
-all_ga_scores = []
-all_rs_scores = []
+combined = {"datasets": {}, "config": {
+    "trials": n_trials,
+    "budget": budget,
+    "ga_population": args.ga_population,
+    "ga_mutation": args.ga_mutation,
+}}
 
-for t in range(n_trials):
-    trial_seed = config.RANDOM_SEED + t
-    config.set_seed(trial_seed)
-    print(f"      Trial {t + 1}/{n_trials} (seed={trial_seed})")
+print(f"[1/5] 데이터셋 반복 실행 시작 (datasets={dataset_keys}, trial={n_trials}, budget={budget})")
+for dataset_key in dataset_keys:
+    if dataset_key not in config.DATASET_CONFIGS:
+        print(f"  [Skip] Unknown dataset key: {dataset_key}")
+        continue
 
-    ga = GeneticAlgorithm(model, sampler, sensitive_index, config)
-    ga_scores = ga.run()
-    rs_scores = random_search(model, sampler, sensitive_index, budget)
+    ds_cfg = config.DATASET_CONFIGS[dataset_key]
+    ds_path = _root / ds_cfg["path"]
+    if not ds_path.exists():
+        print(f"  [Skip] Dataset file not found: {ds_path}")
+        continue
 
-    ga_count = int(search_efficiency(ga_scores, config.DISCRIMINATION_THRESHOLD))
-    rs_count = int(search_efficiency(rs_scores, config.DISCRIMINATION_THRESHOLD))
+    print(f"\n[2/5] Dataset={dataset_key} 로드/전처리...")
+    X_train, X_test, y_train, y_test, sensitive_index = load_and_preprocess(
+        str(ds_path),
+        ds_cfg["sensitive_attr"],
+        ds_cfg["target"],
+        ds_cfg["positive_label"],
+    )
+    print(f"      train={X_train.shape}, test={X_test.shape}, sensitive_index={sensitive_index}")
 
-    ga_trial_counts.append(ga_count)
-    rs_trial_counts.append(rs_count)
-    ga_trial_means.append(float(np.mean(ga_scores)))
-    rs_trial_means.append(float(np.mean(rs_scores)))
-    all_ga_scores.extend(ga_scores)
-    all_rs_scores.extend(rs_scores)
+    print("[3/5] 모델 학습...")
+    model = train_model(X_train, y_train)
+    feature_ranges = compute_feature_ranges(X_train)
+    sampler = make_sampler(feature_ranges)
 
-    print(f"        discriminatory cases (GA/RS): {ga_count}/{rs_count}")
+    metrics = {
+        "individual_count": {"ga": [], "rs": []},
+        "individual_mean": {"ga": [], "rs": []},
+        "demographic_parity": {"ga": [], "rs": []},
+        "equalized_odds": {"ga": [], "rs": []},
+    }
+    curves = {"ga_best": [], "ga_mean": [], "rs_best": [], "rs_mean": []}
 
-print("[5/6] 결과 저장 중...")
-np.save(_root / "ga_results.npy", np.array(all_ga_scores))
-np.save(_root / "random_results.npy", np.array(all_rs_scores))
-np.save(_root / "ga_trial_counts.npy", np.array(ga_trial_counts))
-np.save(_root / "random_trial_counts.npy", np.array(rs_trial_counts))
-np.save(_root / "ga_trial_means.npy", np.array(ga_trial_means))
-np.save(_root / "random_trial_means.npy", np.array(rs_trial_means))
-print(f"      저장 경로: {_root}")
+    print("[4/5] Trial 반복 실행...")
+    for t in range(n_trials):
+        trial_seed = config.RANDOM_SEED + t
+        config.set_seed(trial_seed)
+        print(f"      Trial {t + 1}/{n_trials} (seed={trial_seed})")
 
-print("[6/6] 요약")
-print(f"GA discriminatory cases (mean±std): {np.mean(ga_trial_counts):.2f} ± {np.std(ga_trial_counts):.2f}")
-print(f"Random discriminatory cases (mean±std): {np.mean(rs_trial_counts):.2f} ± {np.std(rs_trial_counts):.2f}")
-print(f"GA mean discrimination score (mean±std): {np.mean(ga_trial_means):.4f} ± {np.std(ga_trial_means):.4f}")
-print(f"Random mean discrimination score (mean±std): {np.mean(rs_trial_means):.4f} ± {np.std(rs_trial_means):.4f}")
+        ga_details = _run_ga_trial(model, sampler, sensitive_index, feature_ranges, budget, ga_conf)
+        rs_details = random_search(
+            model=model,
+            sampler=sampler,
+            sensitive_index=sensitive_index,
+            n_iter=budget,
+            chunk_size=args.ga_population,
+            return_details=True,
+        )
+        ga_metric = _trial_metrics(model, ga_details, sensitive_index)
+        rs_metric = _trial_metrics(model, rs_details, sensitive_index)
+
+        for k in metrics.keys():
+            metrics[k]["ga"].append(float(ga_metric[k]))
+            metrics[k]["rs"].append(float(rs_metric[k]))
+
+        curves["ga_best"].append(ga_details["best_curve"])
+        curves["ga_mean"].append(ga_details["mean_curve"])
+        curves["rs_best"].append(rs_details["best_curve"])
+        curves["rs_mean"].append(rs_details["mean_curve"])
+
+        print(
+            "        individual_count (GA/RS): "
+            f"{int(ga_metric['individual_count'])}/{int(rs_metric['individual_count'])}"
+        )
+
+    ds_dir = results_root / dataset_key
+    ds_dir.mkdir(parents=True, exist_ok=True)
+    np.savez(
+        ds_dir / "trial_metrics.npz",
+        ga_individual_count=np.asarray(metrics["individual_count"]["ga"], dtype=float),
+        rs_individual_count=np.asarray(metrics["individual_count"]["rs"], dtype=float),
+        ga_individual_mean=np.asarray(metrics["individual_mean"]["ga"], dtype=float),
+        rs_individual_mean=np.asarray(metrics["individual_mean"]["rs"], dtype=float),
+        ga_demographic_parity=np.asarray(metrics["demographic_parity"]["ga"], dtype=float),
+        rs_demographic_parity=np.asarray(metrics["demographic_parity"]["rs"], dtype=float),
+        ga_equalized_odds=np.asarray(metrics["equalized_odds"]["ga"], dtype=float),
+        rs_equalized_odds=np.asarray(metrics["equalized_odds"]["rs"], dtype=float),
+    )
+    np.savez(
+        ds_dir / "convergence.npz",
+        ga_best=np.asarray(curves["ga_best"], dtype=float),
+        ga_mean=np.asarray(curves["ga_mean"], dtype=float),
+        rs_best=np.asarray(curves["rs_best"], dtype=float),
+        rs_mean=np.asarray(curves["rs_mean"], dtype=float),
+    )
+
+    sensitivity = []
+    if args.with_sensitivity:
+        print("[5/5] 하이퍼파라미터 민감도 분석...")
+        sensitivity = _run_sensitivity(
+            model=model,
+            sampler=sampler,
+            sensitive_index=sensitive_index,
+            feature_ranges=feature_ranges,
+            budget=budget,
+            trials=args.sensitivity_trials,
+            pop_sizes=pop_sizes,
+            mutation_rates=mutation_rates,
+        )
+        (ds_dir / "sensitivity.json").write_text(
+            json.dumps(sensitivity, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    combined["datasets"][dataset_key] = {
+        "dataset_path": str(ds_path),
+        "sensitive_attr": ds_cfg["sensitive_attr"],
+        "metrics": metrics,
+        "sensitivity": sensitivity,
+    }
+
+combined_path = results_root / "combined_results.json"
+combined_path.write_text(json.dumps(combined, indent=2, ensure_ascii=False), encoding="utf-8")
+print(f"\n완료: {combined_path}")
