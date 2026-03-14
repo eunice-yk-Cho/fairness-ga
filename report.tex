@@ -51,69 +51,130 @@ Random Search is configured with the same number of evaluations per trial.
 
 \section{Experiments}
 \subsection{Setup}
-Dataset: UCI Adult dataset.
-Sensitive attribute: \texttt{sex}.
-Predictive model: RandomForestClassifier.
-Discrimination threshold: 0.2.
-Number of independent trials: 30.
-Baseline: Random Search.
-Primary metric: number of discovered discriminatory cases ($D(x) > 0.2$) per trial.
-Secondary metric: mean discrimination score per trial.
+To improve validity and robustness while keeping the same problem definition and baseline, we evaluate
+the tool under the following controlled setup:
+\begin{itemize}
+    \item Datasets: Adult, COMPAS, German Credit.
+    \item Sensitive attributes: \texttt{sex} (Adult), \texttt{race} (COMPAS), \texttt{sex} (German).
+    \item Predictive model: RandomForestClassifier.
+    \item Number of independent trials: 30 (default).
+    \item Budget per trial per method: $B = N \times G$ evaluations (matched budget between GA and Random Search).
+    \item Baseline: Random Search.
+    \item Fairness metrics:
+    \begin{itemize}
+        \item Individual discrimination count per trial ($D(x) > \tau$, $\tau=0.2$),
+        \item Mean individual discrimination score per trial,
+        \item Demographic parity difference,
+        \item Equalized odds difference (proxy over generated samples).
+    \end{itemize}
+\end{itemize}
 
 \subsection{Procedure}
-For each trial, GA and Random Search run with the same budget.
-Per-trial metrics are stored in:
-\texttt{ga\_trial\_counts.npy}, \texttt{random\_trial\_counts.npy},
-\texttt{ga\_trial\_means.npy}, \texttt{random\_trial\_means.npy}.
-Aggregated raw scores are also exported for visualization.
+For each dataset, GA and Random Search are executed with identical evaluation budgets and seeds.
+For each trial, all fairness metrics are recorded for both methods.
+Additionally, convergence traces are captured as:
+\begin{itemize}
+    \item best fitness per generation/chunk,
+    \item mean fitness per generation/chunk.
+\end{itemize}
+Hyperparameter sensitivity is analyzed by varying:
+\begin{itemize}
+    \item population size $\in \{10, 20, 40\}$,
+    \item mutation rate $\in \{0.05, 0.1, 0.2\}$,
+\end{itemize}
+while preserving the same total evaluation budget.
 
 \section{Statistical Test}
 Wilcoxon signed-rank tests are used at $\alpha = 0.05$ for paired trial results.
 Alternative hypothesis: GA $>$ Random Search.
-Two paired tests are performed:
+Paired tests are performed for each dataset and each fairness metric:
 \begin{itemize}
-    \item discriminatory cases per trial
-    \item mean discrimination score per trial
+    \item individual discrimination count,
+    \item mean individual discrimination score,
+    \item demographic parity difference,
+    \item equalized odds difference (proxy).
 \end{itemize}
 
 \section{Results}
-Quantitative results should be reported from the generated trial files and statistical test output.
-Table~\ref{tab:results-template} is the reporting template.
+Quantitative results should be reported from:
+\texttt{experiments/results/combined\_results.json} and
+\texttt{experiments/stat\_test\_summary.txt}.
+Table~\ref{tab:results-template} reports the current run (\textbf{3 trials, budget=1000}).
 
 \begin{table}[h]
     \centering
-    \caption{GA vs Random Search (30 trials)}
+    \caption{GA vs Random Search across datasets (current run: 3 trials)}
     \label{tab:results-template}
-    \begin{tabular}{lcc}
+    \begin{tabular}{llcc}
         \toprule
-        Metric & GA (mean$\pm$std) & Random (mean$\pm$std) \\
+        Dataset & Metric & GA (mean$\pm$std) & Random (mean$\pm$std) \\
         \midrule
-        Discriminatory cases/trial & \textit{TBD} & \textit{TBD} \\
-        Mean discrimination score/trial & \textit{TBD} & \textit{TBD} \\
+        Adult & ID count & $339.3333 \pm 240.3946$ & $0.3333 \pm 0.4714$ \\
+        Adult & ID mean & $0.1634 \pm 0.0062$ & $0.0424 \pm 0.0007$ \\
+        Adult & DP diff & $0.0142 \pm 0.0148$ & $0.0092 \pm 0.0047$ \\
+        Adult & EO diff (proxy) & $0.4598 \pm 0.2411$ & $0.0844 \pm 0.0305$ \\
+        \midrule
+        COMPAS & ID count & $724.3333 \pm 61.5702$ & $5.3333 \pm 1.8856$ \\
+        COMPAS & ID mean & $0.3191 \pm 0.0168$ & $0.0526 \pm 0.0007$ \\
+        COMPAS & DP diff & $0.6481 \pm 0.0453$ & $0.0146 \pm 0.0020$ \\
+        COMPAS & EO diff (proxy) & $0.7702 \pm 0.1650$ & $0.2697 \pm 0.0674$ \\
+        \midrule
+        German & ID count & $0.0000 \pm 0.0000$ & $0.0000 \pm 0.0000$ \\
+        German & ID mean & $0.0919 \pm 0.0062$ & $0.0268 \pm 0.0003$ \\
+        German & DP diff & $0.2266 \pm 0.1583$ & $0.0394 \pm 0.0284$ \\
+        German & EO diff (proxy) & $0.6320 \pm 0.1853$ & $0.1483 \pm 0.0595$ \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-Visualization output is saved as \texttt{experiments/fairness\_ga\_results.png}.
+Wilcoxon signed-rank test results should be summarized per metric and dataset:
+\begin{itemize}
+    \item Adult: ID count ($p=0.0899$), ID mean ($p=0.125$), DP ($p=0.625$), EO proxy ($p=0.125$).
+    \item COMPAS: ID count ($p=0.125$), ID mean ($p=0.125$), DP ($p=0.125$), EO proxy ($p=0.125$).
+    \item German: ID count ($p=1.0$, all-zero difference), ID mean ($p=0.125$), DP ($p=0.125$), EO proxy ($p=0.125$).
+    \item At $\alpha=0.05$, none of the above are statistically significant in this small-sample run.
+\end{itemize}
+
+Convergence and sensitivity analyses should be discussed with generated plots:
+\begin{itemize}
+    \item \texttt{experiments/fairness\_ga\_results\_<dataset>.png},
+    \item sensitivity heatmap embedded in the same figure (when enabled).
+\end{itemize}
+Despite non-significant tests with $n=3$, GA shows consistently larger mean fairness-gap metrics than Random
+in most settings, especially on COMPAS. A larger trial count (e.g., 30) is required for stronger inferential claims.
 
 \section{Reflection}
-Current limitations include sensitivity to GA hyperparameters, potential mismatch between synthetic sampled inputs
-and realistic data manifold, and dependence on one dataset/system.
-Future improvements include multi-objective optimization, constraint-aware sampling, and cross-dataset validation.
+Current limitations include:
+\begin{itemize}
+    \item generated-sample based fairness estimation may deviate from real deployment distributions,
+    \item equalized odds is computed as a proxy due to unlabeled synthetic candidates,
+    \item GA performance depends on hyperparameter settings and search-space encoding.
+\end{itemize}
+Future improvements include multi-objective optimization, constraint-aware sampling, and
+real-data manifold guided candidate generation.
 
 \section{Conclusion}
-This project provides a reproducible fairness-testing toolchain that compares GA and Random Search under equal
-search budgets and repeated trials. The final claim regarding superiority should be made based on the reported
-paired statistical tests.
+This project provides a reproducible fairness-testing toolchain that compares GA and Random Search under matched
+evaluation budgets, repeated trials, multiple datasets, and multiple fairness metrics.
+Final claims about superiority must be made from paired statistical tests and supported by convergence and
+sensitivity evidence.
 
 \section{Artifact}
 Code repository: \texttt{<REPLACE-WITH-PUBLIC-REPO-URL>}\\
-Raw result files are generated in the project root and can be verified by rerunning:
-\texttt{python experiments/run\_experiment.py}.
+Raw result files are generated under:
+\texttt{experiments/results/}.\\
+Replication commands:
+\begin{itemize}
+    \item \texttt{python scripts/download\_adult.py}
+    \item \texttt{python scripts/download\_benchmark\_datasets.py}
+    \item \texttt{python experiments/run\_experiment.py --with-sensitivity}
+    \item \texttt{python experiments/statistical\_test.py}
+    \item \texttt{python experiments/visualization.py --dataset adult}
+\end{itemize}
 
 \section{References}
-[1] S. Bird et al., ``Fairness and Machine Learning,'' fairmlbook.org.\\
-[2] J. H. Holland, \textit{Adaptation in Natural and Artificial Systems}.\\
+[1] S. Bird et al., ``Fairness and Machine Learning,'' fairmlbook.org.
+[2] J. H. Holland, \textit{Adaptation in Natural and Artificial Systems}.
 [3] F. Wilcoxon, ``Individual comparisons by ranking methods,'' \textit{Biometrics Bulletin}, 1945.
 
 \end{document}

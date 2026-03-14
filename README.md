@@ -17,7 +17,7 @@
 #### A) Conda 사용 (Anaconda/Miniconda)
 
 ```bash
-cd fairness-ga
+cd fairness-ga-advanced
 conda create -n fairness-ga python=3.10 -y
 conda activate fairness-ga
 ```
@@ -27,7 +27,7 @@ conda activate fairness-ga
 #### B) venv 사용
 
 ```bash
-cd fairness-ga
+cd fairness-ga-advanced
 python -m venv .venv
 ```
 
@@ -46,13 +46,17 @@ pip install -r requirements.txt
 
 ### 3. 데이터셋 다운로드
 
-프로젝트 루트(`fairness-ga`)에서 실행:
+프로젝트 루트(`fairness-ga-advanced`)에서 실행:
 
 ```bash
 python scripts/download_adult.py
+python scripts/download_benchmark_datasets.py
 ```
 
-생성 파일: `data/adult.csv` (UCI Adult 데이터)
+생성 파일:
+- `data/adult.csv`
+- `data/compas.csv`
+- `data/german_credit.csv`
 
 ### 4. 실험 실행
 
@@ -64,16 +68,20 @@ python experiments/run_experiment.py
 - Trial 수: `30` (`src/config.py`의 `N_TRIALS`)
 - Trial 당 평가 예산: `50,000` (`POPULATION_SIZE * GENERATIONS`)
 - GA와 Random Search 모두 **동일 예산**으로 비교
+- 데이터셋: `adult, compas, german`
+- fairness metric: individual discrimination + demographic parity + equalized odds(proxy)
 
 빠른 점검 실행 예시:
 ```bash
-python experiments/run_experiment.py --trials 3 --budget 5000
+python experiments/run_experiment.py --datasets adult --trials 3 --budget 5000
+python experiments/run_experiment.py --with-sensitivity --sensitivity-trials 3
 ```
 
 저장 파일:
-- `ga_results.npy`, `random_results.npy` (전체 점수)
-- `ga_trial_counts.npy`, `random_trial_counts.npy` (trial별 불공정 사례 수)
-- `ga_trial_means.npy`, `random_trial_means.npy` (trial별 평균 점수)
+- `experiments/results/combined_results.json`
+- `experiments/results/<dataset>/trial_metrics.npz`
+- `experiments/results/<dataset>/convergence.npz`
+- `experiments/results/<dataset>/sensitivity.json` (옵션)
 
 ### 5. 통계 검정
 
@@ -87,22 +95,26 @@ Wilcoxon signed-rank test로 GA > Random 가설을 검정합니다.
 
 ```bash
 python experiments/visualization.py
+python experiments/visualization.py --dataset compas
 ```
 
-출력: `experiments/fairness_ga_results.png`
+출력: `experiments/fairness_ga_results_<dataset>.png`
 
 ---
 
 ## 요약 (Conda 예시)
 
 ```bash
-cd fairness-ga
-conda activate fairness-ga   # 매번 작업 전에 환경 활성화
+cd fairness-ga-advanced
+conda activate fairness-ga  
 pip install -r requirements.txt
 python scripts/download_adult.py
+python scripts/download_benchmark_datasets.py
 python experiments/run_experiment.py
 python experiments/statistical_test.py
 python experiments/visualization.py
 ```
 
 최초 한 번만: `conda create -n fairness-ga python=3.10 -y`
+
+conda create -n fairness-ga python=3.10 -y && conda activate fairness-ga && pip install -r requirements.txt && python experiments/run_experiment.py
