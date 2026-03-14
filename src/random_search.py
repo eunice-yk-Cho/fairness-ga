@@ -6,7 +6,7 @@ def random_search(model, sampler, sensitive_index, n_iter, chunk_size=None, retu
     samples = []
     best_curve = []
     mean_curve = []
-    report_every = max(1, n_iter // 10)  # 최대 10번 진행 출력
+    report_every = max(1, n_iter // 10)
     chunk_size = max(1, int(chunk_size or n_iter))
     for i in range(n_iter):
         x = sampler()

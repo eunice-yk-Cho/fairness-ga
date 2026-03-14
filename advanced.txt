@@ -1,262 +1,38 @@
-Extension Plan for Robust Evaluation and Tool Improvement
-1. Objective
-
-The goal of this extension is to strengthen the validity, robustness, and academic depth of the proposed fairness testing tool while keeping the scope within the requirements of the Tool Building Project.
-
-The core problem remains unchanged:
-
-AI Model Fairness Testing using search-based methods
-
-The proposed extensions do not change the problem definition or the baseline, but improve the evaluation, analysis, and justification of the tool.
-
-These improvements aim to:
-
-increase experimental credibility
-
-demonstrate robustness across scenarios
-
-provide stronger statistical evidence
-
-meet MSc-level expectations
-
-2. Scope Preservation
-
-This project continues to address a single problem:
-
-AI Model Fairness Testing
-
-The baseline remains:
-
-Random Search
-
-The proposed tool remains:
-
-Genetic Algorithm-based fairness testing tool
-
-The extensions only improve evaluation depth and experimental coverage, which is encouraged by the project specification.
-
-No new problem is introduced.
-
-3. Extension 1 — Multiple Dataset Evaluation
-Motivation
-
-The current experiment evaluates the tool only on the Adult dataset.
-
-Results obtained from a single dataset may not generalize to other domains, and fairness behaviour is known to be dataset-dependent.
-
-To ensure robustness, the tool should be tested on multiple datasets.
-
-Plan
-
-In addition to the Adult dataset, two more commonly used fairness datasets will be included:
-
-Adult dataset (existing)
-
-COMPAS dataset
-
-German Credit dataset
-
-For each dataset:
-
-same classifier type
-
-same search budget
-
-same GA configuration
-
-same number of trials
-
-same fairness metric threshold
-
-Each dataset will be evaluated independently.
-
-Expected Outcome
-
-This allows the study to verify whether the proposed tool performs consistently across different data distributions.
-
-This extension increases the reliability of the conclusion.
-
-4. Extension 2 — Multiple Fairness Metrics
-Motivation
-
-The current study evaluates fairness using only the individual discrimination score.
-
-Fairness is a multi-dimensional concept, and different metrics may lead to different conclusions.
-
-Using only one metric may bias the evaluation.
-
-Plan
-
-In addition to the individual discrimination score, two additional metrics will be evaluated:
-
-Individual discrimination score (existing)
-
-Demographic parity difference
-
-Equalized odds difference
-
-For each trial, all metrics will be recorded.
-
-Statistical tests will be performed separately for each metric.
-
-Expected Outcome
-
-This extension provides a more comprehensive evaluation of fairness behaviour and prevents conclusions based on a single metric.
-
-It also improves the scientific rigor of the study.
-
-5. Extension 3 — Hyperparameter Sensitivity Analysis
-Motivation
-
-Genetic Algorithms depend on parameter settings such as:
-
-population size
-
-mutation rate
-
-number of generations
-
-Without sensitivity analysis, the observed performance may depend on arbitrary parameter choices.
-
-Plan
-
-Additional experiments will be conducted with different parameter settings.
-
-Population size:
-
-10
-
-20
-
-40
-
-Mutation rate:
-
-0.05
-
-0.1
-
-0.2
-
-The total evaluation budget will remain constant for fair comparison.
-
-Each configuration will be tested using the same number of trials.
-
-Expected Outcome
-
-This extension verifies whether the proposed tool performs consistently under different parameter settings.
-
-It also demonstrates understanding of algorithm behaviour.
-
-6. Extension 4 — Convergence Analysis
-Motivation
-
-The current experiment only reports final results.
-
-However, search-based algorithms should also be evaluated by their search dynamics.
-
-Understanding how the algorithm improves over time helps justify the use of evolutionary search.
-
-Plan
-
-During each run, the following values will be recorded:
-
-best fitness per generation
-
-mean fitness per generation
-
-Plots will be generated:
-
-generation vs best discrimination score
-
-generation vs mean discrimination score
-
-The same will be recorded for Random Search for comparison.
-
-Expected Outcome
-
-This analysis shows whether the Genetic Algorithm actually learns during the search process.
-
-It also provides visual evidence of performance improvement.
-
-7. Extension 5 — Expanded Related Work
-Motivation
-
-A stronger literature review is required for MSc-level work.
-
-The current related work section is limited and does not fully position the tool within existing research.
-
-Plan
-
-The related work section will be expanded to include discussion of:
-
-fairness testing methods
-
-search-based software testing
-
-evolutionary testing
-
-bias detection in machine learning
-
-Each approach will be briefly discussed in terms of:
-
-strengths
-
-limitations
-
-differences from the proposed tool
-
-Standard scientific referencing style will be used.
-
-Expected Outcome
-
-This extension improves academic quality and shows awareness of existing research.
-
-8. Experimental Consistency
-
-All extensions will keep the following unchanged:
-
-problem definition
-
-baseline method
-
-evaluation budget
-
-statistical test
-
-core algorithm
-
-This ensures fair comparison and compliance with project requirements.
-
-9. Expected Impact
-
-The proposed extensions improve the project in the following ways:
-
-Aspect	Improvement
-Validity	multiple datasets
-Fairness evaluation	multiple metrics
-Algorithm analysis	hyperparameter study
-Behaviour analysis	convergence plots
-Academic depth	expanded related work
-
-These improvements make the conclusions more convincing while keeping the project within the allowed scope.
-
-10. Compliance with Project Requirements
-
-This extension plan satisfies all project rules:
-
-only one problem is studied
-
-baseline is preserved
-
-tool remains the focus
-
-no ethical issues involved
-
-no human experiments
-
-report length can remain within limit
-
-code will be stored in public repository
-
-Therefore, the extension is fully compliant with the Tool Building Project specification.
+Extension plan — things to do before final submission
+====================================================
+
+Core problem stays the same: AI Model Fairness Testing, GA vs Random Search.
+These are improvements to the evaluation side only. Nothing changes in the
+algorithm or the baseline.
+
+1) Multiple datasets
+   - Right now only Adult is tested.  That's not enough to say anything general.
+   - Add COMPAS and German Credit so we can see if results hold across
+     different data distributions.
+   - Keep everything else identical (same classifier, same budget, same config).
+
+2) Multiple fairness metrics
+   - Individual discrimination alone is a narrow view.
+   - Also compute demographic parity difference and equalized odds difference.
+   - Run the statistical test separately for each metric.
+
+3) Hyperparameter sensitivity
+   - GA results could just be lucky parameter picks.
+   - Vary population size (10, 20, 40) and mutation rate (0.05, 0.1, 0.2).
+   - Keep total budget constant so comparison stays fair.
+
+4) Convergence curves
+   - Only showing final numbers doesn't prove the GA is actually *learning*.
+   - Record best and mean fitness per generation and plot them.
+   - If the curve is flat, GA is basically doing random search with extra steps.
+
+5) Better related work section
+   - Current section is too thin.  Need to mention search-based testing,
+     fairness testing tools, and evolutionary optimization properly.
+   - Use proper references (IEEE style).
+
+What this should achieve:
+- Stronger statistical evidence (more trials, more datasets, more metrics).
+- Shows the algorithm is robust (sensitivity + convergence).
+- Better academic positioning (expanded related work).
+- Still one problem, one baseline, one tool — fully within project scope.

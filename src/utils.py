@@ -7,7 +7,7 @@ def compute_feature_ranges(X):
     return ranges
 
 def make_sampler(feature_ranges):
-    """feature_ranges [(min, max), ...] 로부터 무작위 개체를 샘플링하는 함수 반환."""
+    """Return a callable that samples a random individual from the given feature ranges."""
     def sampler():
         return np.array([np.random.uniform(lo, hi) for lo, hi in feature_ranges])
     return sampler

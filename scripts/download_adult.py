@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 
-# data 디렉터리는 프로젝트 루트 기준 (스크립트 위치와 무관)
+# Data directory is relative to the project root, not the script location
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 OUTPUT_PATH = os.path.join(_DATA_DIR, "adult.csv")
 

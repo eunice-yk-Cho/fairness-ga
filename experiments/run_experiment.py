@@ -5,7 +5,7 @@ import argparse
 import json
 from types import SimpleNamespace
 
-# 프로젝트 루트를 경로에 추가 (python experiments/run_experiment.py 실행 시 src 인식)
+# Add project root to path so that `src` is importable when running from repo root
 _root = Path(__file__).resolve().parent.parent
 if str(_root) not in sys.path:
     sys.path.insert(0, str(_root))
@@ -121,7 +121,7 @@ combined = {"datasets": {}, "config": {
     "ga_mutation": args.ga_mutation,
 }}
 
-print(f"[1/5] 데이터셋 반복 실행 시작 (datasets={dataset_keys}, trial={n_trials}, budget={budget})")
+print(f"[1/5] Starting experiment loop (datasets={dataset_keys}, trials={n_trials}, budget={budget})")
 for dataset_key in dataset_keys:
     if dataset_key not in config.DATASET_CONFIGS:
         print(f"  [Skip] Unknown dataset key: {dataset_key}")
@@ -133,7 +133,7 @@ for dataset_key in dataset_keys:
         print(f"  [Skip] Dataset file not found: {ds_path}")
         continue
 
-    print(f"\n[2/5] Dataset={dataset_key} 로드/전처리...")
+    print(f"\n[2/5] Loading/preprocessing dataset={dataset_key} ...")
     X_train, X_test, y_train, y_test, sensitive_index = load_and_preprocess(
         str(ds_path),
         ds_cfg["sensitive_attr"],
@@ -142,7 +142,7 @@ for dataset_key in dataset_keys:
     )
     print(f"      train={X_train.shape}, test={X_test.shape}, sensitive_index={sensitive_index}")
 
-    print("[3/5] 모델 학습...")
+    print("[3/5] Training model ...")
     model = train_model(X_train, y_train)
     feature_ranges = compute_feature_ranges(X_train)
     sampler = make_sampler(feature_ranges)
@@ -155,7 +155,7 @@ for dataset_key in dataset_keys:
     }
     curves = {"ga_best": [], "ga_mean": [], "rs_best": [], "rs_mean": []}
 
-    print("[4/5] Trial 반복 실행...")
+    print("[4/5] Running trials ...")
     for t in range(n_trials):
         trial_seed = config.RANDOM_SEED + t
         config.set_seed(trial_seed)
@@ -210,7 +210,7 @@ for dataset_key in dataset_keys:
 
     sensitivity = []
     if args.with_sensitivity:
-        print("[5/5] 하이퍼파라미터 민감도 분석...")
+        print("[5/5] Hyperparameter sensitivity analysis ...")
         sensitivity = _run_sensitivity(
             model=model,
             sampler=sampler,
@@ -235,4 +235,4 @@ for dataset_key in dataset_keys:
 
 combined_path = results_root / "combined_results.json"
 combined_path.write_text(json.dumps(combined, indent=2, ensure_ascii=False), encoding="utf-8")
-print(f"\n완료: {combined_path}")
+print(f"\nDone: {combined_path}")

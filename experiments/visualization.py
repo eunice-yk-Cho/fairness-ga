@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-고급 실험 결과 시각화:
+Visualize experiment results:
 - trial-level fairness metrics (GA vs Random)
 - convergence curves
-- (optional) hyperparameter sensitivity
-프로젝트 루트에서 실행: python experiments/visualization.py
+- (optional) hyperparameter sensitivity heatmap
+
+Run from project root:  python experiments/visualization.py
 """
 import sys
 from pathlib import Path
@@ -36,8 +37,7 @@ if not metrics_path.exists() or not conv_path.exists():
 trial_metrics = np.load(metrics_path)
 conv = np.load(conv_path)
 
-# 한글 폰트 설정 (시스템에 없으면 기본 폰트 사용)
-plt.rcParams["font.family"] = ["Malgun Gothic", "NanumGothic", "DejaVu Sans"]
+plt.rcParams["font.family"] = ["DejaVu Sans", "Arial", "Helvetica"]
 
 fig, axes = plt.subplots(2, 2, figsize=(10, 8))
 
@@ -152,5 +152,5 @@ plt.suptitle(f"Advanced fairness results: {dataset_key}", fontsize=12)
 plt.tight_layout()
 out_path = _root / "experiments" / f"fairness_ga_results_{dataset_key}.png"
 plt.savefig(out_path, dpi=150, bbox_inches="tight")
-print(f"저장: {out_path}")
+print(f"Saved: {out_path}")
 plt.show()

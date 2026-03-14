@@ -12,169 +12,191 @@
 \maketitle
 
 \section{Introduction}
-Machine learning models used in decision support can exhibit unfair behavior across sensitive attributes.
-In this project, we target fairness testing for tabular binary classifiers and investigate whether a search-based
-approach can discover discriminatory cases more effectively than random search.
-The selected problem is \textit{AI Model Fairness Testing} from the module baseline list.
+When machine learning models are used for decisions like loan approvals or recidivism
+prediction, they can end up treating people differently based on attributes such as gender
+or race.  This is a well-known problem, but detecting \emph{where} a model behaves unfairly
+is not straightforward---the input space is typically high-dimensional, and discriminatory
+behaviour may only appear in certain regions.
+
+I chose the \textit{AI Model Fairness Testing} problem from the module baseline list
+because it connects search-based software engineering directly to a real-world social
+concern.  The core question is simple: given a fixed evaluation budget, can a genetic
+algorithm (GA) find more discriminatory inputs than a plain random search?
 
 \section{Related Work}
-Fairness testing and bias discovery are typically approached in two ways:
-\textit{(i)} group-level fairness metrics (e.g., demographic parity, equalized odds) and
-\textit{(ii)} individual-level unfairness discovery by perturbing sensitive attributes.
-Search-based software engineering methods (e.g., random search, evolutionary search) are suitable when
-the input space is large and objective functions are non-linear.
-Random search is simple and easy to reproduce, but often inefficient under limited testing budget.
-Genetic algorithms can exploit high-fitness areas via selection and crossover, but may incur higher runtime and
-require careful parameter tuning.
+Fairness in machine learning is generally examined from two angles.
+Group-level metrics such as demographic parity and equalized odds~[1] measure whether a
+model's predictions differ systematically across demographic groups.
+Individual-level fairness, on the other hand, asks whether a single person would receive a
+different outcome if only their sensitive attribute (e.g.\ gender) were changed.
+Both views matter; in this project I focus primarily on the individual-level measure while
+also reporting group-level metrics for a more complete picture.
+
+From a search-based software engineering perspective, random search is the standard
+baseline because it is trivial to implement and needs no parameter tuning.  The downside
+is that it treats the input space uniformly and never builds on what it has already found,
+which becomes inefficient when the evaluation budget is limited.
+Genetic algorithms~[2], in contrast, maintain a population that gradually shifts toward
+high-fitness regions through selection, crossover, and mutation.  The trade-off is that GAs
+introduce extra parameters (population size, mutation rate, selection pressure) that have to
+be chosen carefully---poor settings can lead to premature convergence or wasted
+evaluations.
 
 \section{Problem Definition}
-Let $f(x)$ denote a classifier and $T_s(x)$ the sensitive attribute flip operator.
+Let $f(x)$ denote a classifier and $T_s(x)$ the operator that flips the sensitive
+attribute of input $x$.
 \begin{equation}
-D(x) = |P(y=1|x) - P(y=1|T_s(x))|
+D(x) = |P(y{=}1 \mid x) - P(y{=}1 \mid T_s(x))|
 \end{equation}
-where $D(x)$ is the individual discrimination score. A higher value indicates stronger potential unfairness.
+$D(x)$ is the individual discrimination score: the bigger the value, the more the
+prediction depends on the sensitive attribute alone.
 
 \section{Method}
 \subsection{Genetic Algorithm}
-Population:
+The population at generation $t$ is
 \[
-\mathcal{P}^{(t)} = \{x_1, ..., x_N\}
+\mathcal{P}^{(t)} = \{x_1, \ldots, x_N\}
 \]
-Objective:
-\[
-\max_x D(x)
-\]
-The implementation uses tournament selection, uniform crossover, and mutation.
-For comparability, we enforce an \textbf{equal evaluation budget} between GA and Random Search.
-If population size is $N$ and generations are $G$, then each GA trial evaluates $N \times G$ candidates.
-Random Search is configured with the same number of evaluations per trial.
+and the objective is to maximise $D(x)$---i.e.\ find inputs that expose the largest
+fairness gap.
+
+I use tournament selection ($k{=}3$) because it provides moderate selection pressure without
+requiring the population to be globally sorted.  Crossover is uniform: each feature of the
+child is copied from one of the two parents with equal probability.  Mutation adds
+Gaussian noise $\mathcal{N}(0, 0.1)$ to a single randomly chosen feature with probability
+equal to the mutation rate.  All generated values are clipped to the training-data feature
+ranges so that the candidates stay realistic.
+
+To keep the comparison fair, I enforce an \textbf{equal evaluation budget} for both GA and
+random search.  Every call to the model (including the initial population) counts toward
+the budget.  With population size $N$ and budget $B$, the GA runs for roughly
+$\lfloor B/N \rfloor$ generations.
 
 \section{Experiments}
 \subsection{Setup}
-To improve validity and robustness while keeping the same problem definition and baseline, we evaluate
-the tool under the following controlled setup:
 \begin{itemize}
     \item Datasets: Adult, COMPAS, German Credit.
-    \item Sensitive attributes: \texttt{sex} (Adult), \texttt{race} (COMPAS), \texttt{sex} (German).
-    \item Predictive model: RandomForestClassifier.
-    \item Number of independent trials: 30 (default).
-    \item Budget per trial per method: $B = N \times G$ evaluations (matched budget between GA and Random Search).
-    \item Baseline: Random Search.
-    \item Fairness metrics:
+    \item Sensitive attributes: \texttt{sex} (Adult), \texttt{race} (COMPAS),
+          \texttt{sex} (German).
+    \item Classifier: RandomForestClassifier (scikit-learn, default parameters).
+    \item Independent trials: 30 (default).
+    \item Budget per trial per method: $B$ evaluations, matched between GA and
+          random search.
+    \item Baseline: Random Search with the same budget.
+    \item Fairness metrics recorded per trial:
     \begin{itemize}
-        \item Individual discrimination count per trial ($D(x) > \tau$, $\tau=0.2$),
-        \item Mean individual discrimination score per trial,
+        \item Individual discrimination count ($D(x) > 0.2$),
+        \item Mean individual discrimination score,
         \item Demographic parity difference,
         \item Equalized odds difference (proxy over generated samples).
     \end{itemize}
 \end{itemize}
 
 \subsection{Procedure}
-For each dataset, GA and Random Search are executed with identical evaluation budgets and seeds.
-For each trial, all fairness metrics are recorded for both methods.
-Additionally, convergence traces are captured as:
-\begin{itemize}
-    \item best fitness per generation/chunk,
-    \item mean fitness per generation/chunk.
-\end{itemize}
-Hyperparameter sensitivity is analyzed by varying:
-\begin{itemize}
-    \item population size $\in \{10, 20, 40\}$,
-    \item mutation rate $\in \{0.05, 0.1, 0.2\}$,
-\end{itemize}
-while preserving the same total evaluation budget.
+For each dataset, both methods run with identical budgets and random seeds.
+All four fairness metrics are recorded after every trial.
+I also record convergence traces---best and mean fitness per generation (GA) or
+per chunk (random search)---to see how performance develops over the budget.
+
+Hyperparameter sensitivity is checked by varying population size
+$\in \{10, 20, 40\}$ and mutation rate $\in \{0.05, 0.1, 0.2\}$
+while keeping the total budget constant.
 
 \section{Statistical Test}
-Wilcoxon signed-rank tests are used at $\alpha = 0.05$ for paired trial results.
-Alternative hypothesis: GA $>$ Random Search.
-Paired tests are performed for each dataset and each fairness metric:
-\begin{itemize}
-    \item individual discrimination count,
-    \item mean individual discrimination score,
-    \item demographic parity difference,
-    \item equalized odds difference (proxy).
-\end{itemize}
+I use the Wilcoxon signed-rank test~[3] at $\alpha = 0.05$ with the one-sided
+alternative hypothesis GA $>$ Random Search.  The test is applied separately for each
+dataset--metric pair, using the paired trial results.
 
 \section{Results}
-Quantitative results should be reported from:
-\texttt{experiments/results/combined\_results.json} and
-\texttt{experiments/stat\_test\_summary.txt}.
-Table~\ref{tab:results-template} reports the current run (\textbf{3 trials, budget=1000}).
+Results below are from an initial small run (\textbf{3 trials, budget = 1000}) and are
+included mainly to verify the pipeline.  A full 30-trial run is needed before drawing
+any real conclusions.
 
 \begin{table}[h]
     \centering
-    \caption{GA vs Random Search across datasets (current run: 3 trials)}
+    \caption{GA vs Random Search (preliminary run: 3 trials, budget = 1000)}
     \label{tab:results-template}
     \begin{tabular}{llcc}
         \toprule
         Dataset & Metric & GA (mean$\pm$std) & Random (mean$\pm$std) \\
         \midrule
-        Adult & ID count & $339.3333 \pm 240.3946$ & $0.3333 \pm 0.4714$ \\
-        Adult & ID mean & $0.1634 \pm 0.0062$ & $0.0424 \pm 0.0007$ \\
-        Adult & DP diff & $0.0142 \pm 0.0148$ & $0.0092 \pm 0.0047$ \\
-        Adult & EO diff (proxy) & $0.4598 \pm 0.2411$ & $0.0844 \pm 0.0305$ \\
+        Adult & ID count & $339.3 \pm 240.4$ & $0.3 \pm 0.5$ \\
+        Adult & ID mean & $0.163 \pm 0.006$ & $0.042 \pm 0.001$ \\
+        Adult & DP diff & $0.014 \pm 0.015$ & $0.009 \pm 0.005$ \\
+        Adult & EO diff & $0.460 \pm 0.241$ & $0.084 \pm 0.031$ \\
         \midrule
-        COMPAS & ID count & $724.3333 \pm 61.5702$ & $5.3333 \pm 1.8856$ \\
-        COMPAS & ID mean & $0.3191 \pm 0.0168$ & $0.0526 \pm 0.0007$ \\
-        COMPAS & DP diff & $0.6481 \pm 0.0453$ & $0.0146 \pm 0.0020$ \\
-        COMPAS & EO diff (proxy) & $0.7702 \pm 0.1650$ & $0.2697 \pm 0.0674$ \\
+        COMPAS & ID count & $724.3 \pm 61.6$ & $5.3 \pm 1.9$ \\
+        COMPAS & ID mean & $0.319 \pm 0.017$ & $0.053 \pm 0.001$ \\
+        COMPAS & DP diff & $0.648 \pm 0.045$ & $0.015 \pm 0.002$ \\
+        COMPAS & EO diff & $0.770 \pm 0.165$ & $0.270 \pm 0.067$ \\
         \midrule
-        German & ID count & $0.0000 \pm 0.0000$ & $0.0000 \pm 0.0000$ \\
-        German & ID mean & $0.0919 \pm 0.0062$ & $0.0268 \pm 0.0003$ \\
-        German & DP diff & $0.2266 \pm 0.1583$ & $0.0394 \pm 0.0284$ \\
-        German & EO diff (proxy) & $0.6320 \pm 0.1853$ & $0.1483 \pm 0.0595$ \\
+        German & ID count & $0.0 \pm 0.0$ & $0.0 \pm 0.0$ \\
+        German & ID mean & $0.092 \pm 0.006$ & $0.027 \pm 0.000$ \\
+        German & DP diff & $0.227 \pm 0.158$ & $0.039 \pm 0.028$ \\
+        German & EO diff & $0.632 \pm 0.185$ & $0.148 \pm 0.060$ \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-Wilcoxon signed-rank test results should be summarized per metric and dataset:
-\begin{itemize}
-    \item Adult: ID count ($p=0.0899$), ID mean ($p=0.125$), DP ($p=0.625$), EO proxy ($p=0.125$).
-    \item COMPAS: ID count ($p=0.125$), ID mean ($p=0.125$), DP ($p=0.125$), EO proxy ($p=0.125$).
-    \item German: ID count ($p=1.0$, all-zero difference), ID mean ($p=0.125$), DP ($p=0.125$), EO proxy ($p=0.125$).
-    \item At $\alpha=0.05$, none of the above are statistically significant in this small-sample run.
-\end{itemize}
+With only $n{=}3$, the minimum achievable Wilcoxon $p$-value is 0.125, so none of the
+comparisons reach significance at $\alpha{=}0.05$.  Nevertheless, GA shows consistently
+higher mean values across almost every dataset--metric combination, especially on COMPAS
+where the gap is large.  The German dataset yields zero ID-count for both methods because
+no generated input exceeded the 0.2 threshold; this likely reflects a dataset-specific
+characteristic rather than a failure of the search.
 
-Convergence and sensitivity analyses should be discussed with generated plots:
-\begin{itemize}
-    \item \texttt{experiments/fairness\_ga\_results\_<dataset>.png},
-    \item sensitivity heatmap embedded in the same figure (when enabled).
-\end{itemize}
-Despite non-significant tests with $n=3$, GA shows consistently larger mean fairness-gap metrics than Random
-in most settings, especially on COMPAS. A larger trial count (e.g., 30) is required for stronger inferential claims.
+A proper 30-trial run should provide enough paired observations for the signed-rank test
+to detect the differences visible in the means.
+
+Convergence plots and sensitivity heatmaps are generated automatically by
+\texttt{experiments/visualization.py} and should be included in the final version of this
+report.
 
 \section{Reflection}
-Current limitations include:
+There are a few clear limitations:
 \begin{itemize}
-    \item generated-sample based fairness estimation may deviate from real deployment distributions,
-    \item equalized odds is computed as a proxy due to unlabeled synthetic candidates,
-    \item GA performance depends on hyperparameter settings and search-space encoding.
+    \item The fairness metrics are computed over \emph{generated} samples, not real
+          deployment data, so the estimated discrimination may not match what would happen
+          in practice.
+    \item Equalized odds is only a proxy here because the generated candidates have no
+          ground-truth labels---I use counterfactual model predictions instead.
+    \item GA performance depends on hyperparameters; although the sensitivity analysis
+          covers several configurations, the search over settings is not exhaustive.
+    \item Using a single classifier type (RandomForest) limits generalisability.
 \end{itemize}
-Future improvements include multi-objective optimization, constraint-aware sampling, and
-real-data manifold guided candidate generation.
+
+Possible improvements for future work include multi-objective optimisation (balancing
+discrimination discovery with input realism), constraint-aware sampling to stay closer to
+the real data manifold, and testing on additional classifiers.
 
 \section{Conclusion}
-This project provides a reproducible fairness-testing toolchain that compares GA and Random Search under matched
-evaluation budgets, repeated trials, multiple datasets, and multiple fairness metrics.
-Final claims about superiority must be made from paired statistical tests and supported by convergence and
-sensitivity evidence.
+This project provides a reproducible pipeline for comparing GA-based and random fairness
+testing under matched budgets.  Preliminary results suggest that GA finds discriminatory
+inputs more effectively, but statistical confirmation requires a full-scale run with enough
+trials.  The toolchain also supports convergence analysis and hyperparameter sensitivity,
+which help explain \emph{why} the GA does (or does not) outperform random search on a
+given dataset.
 
 \section{Artifact}
 Code repository: \texttt{<REPLACE-WITH-PUBLIC-REPO-URL>}\\
-Raw result files are generated under:
-\texttt{experiments/results/}.\\
-Replication commands:
-\begin{itemize}
+Raw results are generated under \texttt{experiments/results/}.\\
+Replication steps:
+\begin{enumerate}
+    \item \texttt{pip install -r requirements.txt}
     \item \texttt{python scripts/download\_adult.py}
     \item \texttt{python scripts/download\_benchmark\_datasets.py}
     \item \texttt{python experiments/run\_experiment.py --with-sensitivity}
     \item \texttt{python experiments/statistical\_test.py}
     \item \texttt{python experiments/visualization.py --dataset adult}
-\end{itemize}
+\end{enumerate}
 
 \section{References}
-[1] S. Bird et al., ``Fairness and Machine Learning,'' fairmlbook.org.
-[2] J. H. Holland, \textit{Adaptation in Natural and Artificial Systems}.
-[3] F. Wilcoxon, ``Individual comparisons by ranking methods,'' \textit{Biometrics Bulletin}, 1945.
+[1] S.~Bird et al., ``Fairness and Machine Learning,'' \textit{fairmlbook.org}.
+
+[2] J.~H.~Holland, \textit{Adaptation in Natural and Artificial Systems}, University of
+Michigan Press, 1975.
+
+[3] F.~Wilcoxon, ``Individual comparisons by ranking methods,'' \textit{Biometrics
+Bulletin}, vol.~1, no.~6, pp.~80--83, 1945.
 
 \end{document}

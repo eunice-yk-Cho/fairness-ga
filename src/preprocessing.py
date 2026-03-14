@@ -8,7 +8,10 @@ _FEMALE_TOKENS = {"female", "f", "woman"}
 def _normalize_sensitive(series):
     s = series.copy()
     if pd.api.types.is_numeric_dtype(s):
-        return (s.astype(float) > 0).astype(int)
+        unique = sorted(s.unique())
+        if len(unique) <= 2:
+            return (s == unique[-1]).astype(int)
+        return (s > s.median()).astype(int)
 
     lower = s.astype(str).str.strip().str.lower()
     if lower.isin(_MALE_TOKENS | _FEMALE_TOKENS).all():
