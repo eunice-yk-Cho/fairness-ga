@@ -38,9 +38,9 @@ def load_and_preprocess(path, sensitive_attr, target_col, positive_label):
 
     encoders = {}
     for col in X.columns:
-        if X[col].dtype == "object":
+        if not pd.api.types.is_numeric_dtype(X[col]):
             le = LabelEncoder()
-            X[col] = le.fit_transform(X[col])
+            X[col] = le.fit_transform(X[col].astype(str))
             encoders[col] = le
 
     sensitive_index = list(X.columns).index(sensitive_attr)

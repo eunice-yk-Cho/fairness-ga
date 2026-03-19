@@ -1,0 +1,48 @@
+\documentclass[10pt]{article}
+\usepackage{times}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{booktabs}
+
+\title{Requirements}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section*{System requirements}
+
+\begin{itemize}
+    \item \textbf{Operating system}: Linux, macOS, or Windows.
+    \item \textbf{Python}: 3.8 or later (tested on 3.10 and 3.11).
+    \item \textbf{Disk}: approximately 50\,MB for datasets and results.
+    \item \textbf{RAM}: 1\,GB minimum (2\,GB recommended for 30-trial runs).
+\end{itemize}
+
+\section*{Python packages}
+
+All packages are listed in \texttt{requirements.txt} and can be installed with:
+
+\begin{verbatim}
+pip install -r requirements.txt
+\end{verbatim}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\toprule
+Package & Tested version \\
+\midrule
+numpy        & 1.26.4 \\
+pandas       & 3.0.1  \\
+scikit-learn & 1.8.0  \\
+scipy        & 1.12.0 \\
+matplotlib   & 3.10.8 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent Newer versions of these packages should also work.  If you encounter
+compatibility issues, create a virtual environment and install the exact versions above.
+
+\end{document}

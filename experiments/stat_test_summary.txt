@@ -1,114 +1,113 @@
 [Dataset] adult
   [Metric] individual_count
-    N trials: 3
-    GA mean±std: 339.3333 ± 240.3946
-    RS mean±std: 0.3333 ± 0.4714
-    Mean difference (GA-RS): 339.0000
-    Win rate (GA>RS): 0.667
-    Wilcoxon statistic: 3.0
-    p-value: 0.08985624743949988
+    N trials: 30
+    GA mean±std: 49347.8333 ± 344.7048
+    RS mean±std: 4.5333 ± 1.7839
+    Mean difference (GA-RS): 49343.3000
+    Win rate (GA>RS): 1.000
+    Wilcoxon statistic: 465.0
+    p-value: 8.666533220995528e-07
 
   [Metric] individual_mean
-    N trials: 3
-    GA mean±std: 0.1634 ± 0.0062
-    RS mean±std: 0.0424 ± 0.0007
-    Mean difference (GA-RS): 0.1210
+    N trials: 30
+    GA mean±std: 0.2388 ± 0.0275
+    RS mean±std: 0.0411 ± 0.0001
+    Mean difference (GA-RS): 0.1977
     Win rate (GA>RS): 1.000
-    Wilcoxon statistic: 6.0
-    p-value: 0.125
+    Wilcoxon statistic: 465.0
+    p-value: 9.313225746154785e-10
 
   [Metric] demographic_parity
-    N trials: 3
-    GA mean±std: 0.0142 ± 0.0148
-    RS mean±std: 0.0092 ± 0.0047
-    Mean difference (GA-RS): 0.0050
-    Win rate (GA>RS): 0.333
-    Wilcoxon statistic: 3.0
-    p-value: 0.625
+    N trials: 30
+    GA mean±std: 0.2517 ± 0.3745
+    RS mean±std: 0.0057 ± 0.0020
+    Mean difference (GA-RS): 0.2460
+    Win rate (GA>RS): 0.533
+    Wilcoxon statistic: 348.0
+    p-value: 0.008215606212615967
 
   [Metric] equalized_odds
-    N trials: 3
-    GA mean±std: 0.4598 ± 0.2411
-    RS mean±std: 0.0844 ± 0.0305
-    Mean difference (GA-RS): 0.3754
-    Win rate (GA>RS): 1.000
-    Wilcoxon statistic: 6.0
-    p-value: 0.125
+    N trials: 30
+    GA mean±std: 0.5003 ± 0.3917
+    RS mean±std: 0.0807 ± 0.0087
+    Mean difference (GA-RS): 0.4196
+    Win rate (GA>RS): 0.733
+    Wilcoxon statistic: 422.0
+    p-value: 1.183338463306427e-05
 
 
 [Dataset] compas
   [Metric] individual_count
-    N trials: 3
-    GA mean±std: 724.3333 ± 61.5702
-    RS mean±std: 5.3333 ± 1.8856
-    Mean difference (GA-RS): 719.0000
+    N trials: 30
+    GA mean±std: 49446.8667 ± 940.6938
+    RS mean±std: 269.1333 ± 16.9287
+    Mean difference (GA-RS): 49177.7333
     Win rate (GA>RS): 1.000
-    Wilcoxon statistic: 6.0
-    p-value: 0.125
+    Wilcoxon statistic: 465.0
+    p-value: 8.666533220995528e-07
 
   [Metric] individual_mean
-    N trials: 3
-    GA mean±std: 0.3191 ± 0.0168
-    RS mean±std: 0.0526 ± 0.0007
-    Mean difference (GA-RS): 0.2665
+    N trials: 30
+    GA mean±std: 0.3651 ± 0.1035
+    RS mean±std: 0.0519 ± 0.0001
+    Mean difference (GA-RS): 0.3132
     Win rate (GA>RS): 1.000
-    Wilcoxon statistic: 6.0
-    p-value: 0.125
+    Wilcoxon statistic: 465.0
+    p-value: 9.313225746154785e-10
 
   [Metric] demographic_parity
-    N trials: 3
-    GA mean±std: 0.6481 ± 0.0453
-    RS mean±std: 0.0146 ± 0.0020
-    Mean difference (GA-RS): 0.6335
-    Win rate (GA>RS): 1.000
-    Wilcoxon statistic: 6.0
-    p-value: 0.125
+    N trials: 30
+    GA mean±std: 0.4275 ± 0.4656
+    RS mean±std: 0.0022 ± 0.0013
+    Mean difference (GA-RS): 0.4253
+    Win rate (GA>RS): 0.567
+    Wilcoxon statistic: 360.0
+    p-value: 0.0038060685619711876
 
   [Metric] equalized_odds
-    N trials: 3
-    GA mean±std: 0.7702 ± 0.1650
-    RS mean±std: 0.2697 ± 0.0674
-    Mean difference (GA-RS): 0.5005
-    Win rate (GA>RS): 1.000
-    Wilcoxon statistic: 6.0
-    p-value: 0.125
+    N trials: 30
+    GA mean±std: 0.5674 ± 0.4196
+    RS mean±std: 0.0342 ± 0.0207
+    Mean difference (GA-RS): 0.5331
+    Win rate (GA>RS): 0.800
+    Wilcoxon statistic: 442.0
+    p-value: 5.960464477539062e-07
 
 
 [Dataset] german
   [Metric] individual_count
-    N trials: 3
-    GA mean±std: 0.0000 ± 0.0000
+    N trials: 30
+    GA mean±std: 3257.3667 ± 12188.0382
     RS mean±std: 0.0000 ± 0.0000
-    Mean difference (GA-RS): 0.0000
-    Win rate (GA>RS): 0.000
-    Wilcoxon statistic: 0.0
-    p-value: 1.0
-    Note: All paired differences are zero; p=1.0.
+    Mean difference (GA-RS): 3257.3667
+    Win rate (GA>RS): 0.067
+    Wilcoxon statistic: 3.0
+    p-value: 0.08985624743949988
 
   [Metric] individual_mean
-    N trials: 3
-    GA mean±std: 0.0919 ± 0.0062
-    RS mean±std: 0.0268 ± 0.0003
-    Mean difference (GA-RS): 0.0652
+    N trials: 30
+    GA mean±std: 0.1551 ± 0.0216
+    RS mean±std: 0.0267 ± 0.0001
+    Mean difference (GA-RS): 0.1284
     Win rate (GA>RS): 1.000
-    Wilcoxon statistic: 6.0
-    p-value: 0.125
+    Wilcoxon statistic: 465.0
+    p-value: 9.313225746154785e-10
 
   [Metric] demographic_parity
-    N trials: 3
-    GA mean±std: 0.2266 ± 0.1583
-    RS mean±std: 0.0394 ± 0.0284
-    Mean difference (GA-RS): 0.1872
-    Win rate (GA>RS): 1.000
-    Wilcoxon statistic: 6.0
-    p-value: 0.125
+    N trials: 30
+    GA mean±std: 0.3670 ± 0.3966
+    RS mean±std: 0.0380 ± 0.0041
+    Mean difference (GA-RS): 0.3290
+    Win rate (GA>RS): 0.767
+    Wilcoxon statistic: 410.0
+    p-value: 4.95128333568573e-05
 
   [Metric] equalized_odds
-    N trials: 3
-    GA mean±std: 0.6320 ± 0.1853
-    RS mean±std: 0.1483 ± 0.0595
-    Mean difference (GA-RS): 0.4837
+    N trials: 30
+    GA mean±std: 0.6931 ± 0.2692
+    RS mean±std: 0.1524 ± 0.0054
+    Mean difference (GA-RS): 0.5406
     Win rate (GA>RS): 1.000
-    Wilcoxon statistic: 6.0
-    p-value: 0.125
+    Wilcoxon statistic: 465.0
+    p-value: 9.313225746154785e-10
 

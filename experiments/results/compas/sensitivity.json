@@ -1,0 +1,74 @@
+[
+  {
+    "population_size": 10,
+    "mutation_rate": 0.05,
+    "mean_discriminatory_cases": 26157.8,
+    "std_discriminatory_cases": 22184.848283456886,
+    "mean_score": 0.22251727276190475,
+    "std_score": 0.06727317886426677
+  },
+  {
+    "population_size": 10,
+    "mutation_rate": 0.1,
+    "mean_discriminatory_cases": 18718.4,
+    "std_discriminatory_cases": 22995.422271400017,
+    "mean_score": 0.18197805957176164,
+    "std_score": 0.09120065552039652
+  },
+  {
+    "population_size": 10,
+    "mutation_rate": 0.2,
+    "mean_discriminatory_cases": 9867.4,
+    "std_discriminatory_cases": 19734.8,
+    "mean_score": 0.1900206437142857,
+    "std_score": 0.035859533709576286
+  },
+  {
+    "population_size": 20,
+    "mutation_rate": 0.05,
+    "mean_discriminatory_cases": 29909.8,
+    "std_discriminatory_cases": 24421.311884499573,
+    "mean_score": 0.22564430228571433,
+    "std_score": 0.06959932254304495
+  },
+  {
+    "population_size": 20,
+    "mutation_rate": 0.1,
+    "mean_discriminatory_cases": 31433.2,
+    "std_discriminatory_cases": 22544.46776839054,
+    "mean_score": 0.2071414084126984,
+    "std_score": 0.00771489889466322
+  },
+  {
+    "population_size": 20,
+    "mutation_rate": 0.2,
+    "mean_discriminatory_cases": 28352.2,
+    "std_discriminatory_cases": 23302.02046518713,
+    "mean_score": 0.21717012998989899,
+    "std_score": 0.04737285888600101
+  },
+  {
+    "population_size": 40,
+    "mutation_rate": 0.05,
+    "mean_discriminatory_cases": 49683.2,
+    "std_discriminatory_cases": 148.07349526502034,
+    "mean_score": 0.3107061762978525,
+    "std_score": 0.06389944917922744
+  },
+  {
+    "population_size": 40,
+    "mutation_rate": 0.1,
+    "mean_discriminatory_cases": 39785.0,
+    "std_discriminatory_cases": 19892.709126712733,
+    "mean_score": 0.432665501933511,
+    "std_score": 0.17868178603125787
+  },
+  {
+    "population_size": 40,
+    "mutation_rate": 0.2,
+    "mean_discriminatory_cases": 49631.6,
+    "std_discriminatory_cases": 115.02104155327407,
+    "mean_score": 0.303985942027639,
+    "std_score": 0.08187825770650238
+  }
+]

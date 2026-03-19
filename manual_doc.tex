@@ -1,0 +1,125 @@
+\documentclass[10pt]{article}
+\usepackage{times}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{booktabs}
+
+\title{User Manual}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Overview}
+
+This tool compares a genetic algorithm (GA) against random search for discovering
+fairness violations in machine learning classifiers.  All interaction is through
+command-line scripts.
+
+\section{Directory structure}
+
+\begin{verbatim}
+fairness-ga/
+  src/                    Core library modules
+    config.py             Default hyperparameters and dataset configs
+    preprocessing.py      Data loading and encoding
+    model.py              Classifier training
+    fairness.py           Discrimination score function
+    genetic_algorithm.py  GA implementation
+    random_search.py      Random search baseline
+    metrics.py            Fairness metric functions
+    utils.py              Feature-range sampling utilities
+  experiments/
+    run_experiment.py     Main experiment driver
+    statistical_test.py   Wilcoxon signed-rank tests
+    visualization.py      Result plotting
+    results/              Generated output (JSON, NPZ, PNG)
+  scripts/
+    download_adult.py     Download Adult dataset
+    download_benchmark_datasets.py
+                          Download COMPAS and German Credit
+  data/                   Downloaded CSV files
+\end{verbatim}
+
+\section{Running experiments}
+
+\subsection{Basic usage}
+
+\begin{verbatim}
+python experiments/run_experiment.py
+\end{verbatim}
+
+This runs all three datasets with default settings (30~trials, budget~50\,000).
+
+\subsection{Command-line arguments}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lll}
+\toprule
+Argument & Default & Description \\
+\midrule
+\texttt{--trials}     & 30    & Number of independent trials \\
+\texttt{--budget}     & 50000 & Model evaluations per method per trial \\
+\texttt{--datasets}   & adult,compas,german & Comma-separated dataset keys \\
+\texttt{--ga-population} & 50 & GA population size \\
+\texttt{--ga-mutation}   & 0.1 & GA mutation rate \\
+\texttt{--with-sensitivity} & off & Run hyperparameter sensitivity sweep \\
+\texttt{--sensitivity-trials} & 5 & Trials per sensitivity configuration \\
+\texttt{--sensitivity-pop-sizes} & 10,20,40 & Population sizes to test \\
+\texttt{--sensitivity-mutation-rates} & 0.05,0.1,0.2 & Mutation rates to test \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Example: quick test}
+
+\begin{verbatim}
+python experiments/run_experiment.py \
+    --datasets adult --trials 3 --budget 5000
+\end{verbatim}
+
+\section{Statistical testing}
+
+After the experiment finishes:
+
+\begin{verbatim}
+python experiments/statistical_test.py
+\end{verbatim}
+
+Reads \texttt{experiments/results/combined\_results.json} and prints the Wilcoxon
+signed-rank test results to the console and to
+\texttt{experiments/stat\_test\_summary.txt}.
+
+\section{Visualization}
+
+\begin{verbatim}
+python experiments/visualization.py --dataset adult
+python experiments/visualization.py --dataset compas
+python experiments/visualization.py --dataset german
+\end{verbatim}
+
+Each command generates a four-panel figure saved as
+\texttt{experiments/fairness\_ga\_results\_<dataset>.png}.
+
+\section{Output files}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{ll}
+\toprule
+Path & Contents \\
+\midrule
+\texttt{results/combined\_results.json} & All metrics (JSON) \\
+\texttt{results/<dataset>/trial\_metrics.npz} & Per-trial metric arrays \\
+\texttt{results/<dataset>/convergence.npz} & Per-generation convergence curves \\
+\texttt{results/<dataset>/sensitivity.json} & Sensitivity sweep results \\
+\texttt{stat\_test\_summary.txt} & Wilcoxon test summary \\
+\texttt{fairness\_ga\_results\_<dataset>.png} & Visualization figures \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}

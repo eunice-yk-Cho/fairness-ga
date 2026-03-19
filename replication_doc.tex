@@ -1,0 +1,91 @@
+\documentclass[10pt]{article}
+\usepackage{times}
+\usepackage[margin=2.5cm]{geometry}
+
+\title{Replication Guide}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section*{Step-by-step replication}
+
+The commands below reproduce all results reported in the paper.  Estimated total
+wall-clock time is 1--2~hours on a modern laptop (the main experiment dominates).
+
+\subsection*{1. Environment setup}
+
+\begin{verbatim}
+# Option A: conda
+conda create -n fairness-ga python=3.10 -y
+conda activate fairness-ga
+
+# Option B: venv
+python -m venv .venv
+source .venv/bin/activate    # Linux/macOS
+.venv\Scripts\activate.bat   # Windows
+\end{verbatim}
+
+\subsection*{2. Install dependencies}
+
+\begin{verbatim}
+pip install -r requirements.txt
+\end{verbatim}
+
+\subsection*{3. Download datasets}
+
+\begin{verbatim}
+python scripts/download_adult.py
+python scripts/download_benchmark_datasets.py
+\end{verbatim}
+
+Expected output: \texttt{data/adult.csv}, \texttt{data/compas.csv},
+\texttt{data/german\_credit.csv}.
+
+\subsection*{4. Run the experiment}
+
+\begin{verbatim}
+python experiments/run_experiment.py \
+    --trials 30 --budget 10000 --with-sensitivity
+\end{verbatim}
+
+This runs GA and random search on all three datasets with 30~trials each, plus a
+hyperparameter sensitivity sweep.  Expected runtime: 1--2~hours.
+
+Output files are saved under \texttt{experiments/results/}.
+
+\subsection*{5. Statistical test}
+
+\begin{verbatim}
+python experiments/statistical_test.py
+\end{verbatim}
+
+Prints the Wilcoxon signed-rank test results and saves them to\\
+\texttt{experiments/stat\_test\_summary.txt}.
+
+\subsection*{6. Generate figures}
+
+\begin{verbatim}
+python experiments/visualization.py --dataset adult
+python experiments/visualization.py --dataset compas
+python experiments/visualization.py --dataset german
+\end{verbatim}
+
+Saves figure files to \texttt{experiments/fairness\_ga\_results\_<dataset>.png}.
+
+\subsection*{Expected results}
+
+\begin{itemize}
+    \item GA should show higher mean discrimination scores and individual violation
+          counts than random search across most dataset--metric combinations.
+    \item Wilcoxon $p$-values should be well below 0.05 for most comparisons,
+          especially on COMPAS.
+    \item Convergence curves should show GA's best fitness increasing over generations,
+          while random search remains approximately flat.
+\end{itemize}
+
+\noindent\textbf{Note}: Due to platform differences in floating-point arithmetic, exact
+numeric values may vary slightly, but the qualitative conclusions should be identical.
+
+\end{document}
