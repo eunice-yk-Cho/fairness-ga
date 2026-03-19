@@ -46,7 +46,7 @@ This creates `data/adult.csv`, `data/compas.csv`, and `data/german_credit.csv`.
 python experiments/run_experiment.py
 ```
 
-Default settings: 30 trials, budget = 50 000 evaluations per method
+Default settings: 30 trials, budget = 50,000 evaluations per method
 (`POPULATION_SIZE * GENERATIONS` in `src/config.py`).
 
 Quick test:
