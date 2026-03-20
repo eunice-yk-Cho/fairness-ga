@@ -1,3 +1,5 @@
+
+import warnings
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split
@@ -27,6 +29,18 @@ def _normalize_sensitive(series):
 
     le = LabelEncoder()
     encoded = le.fit_transform(lower)
+    # FIX #32: warn about alphabetical-min→0 mapping so users can verify intent
+    min_enc = int(encoded.min())
+    mapping_parts = [
+        f"{cls} \u2192 {0 if i == min_enc else 1}"
+        for i, cls in enumerate(le.classes_)
+    ]
+    warnings.warn(
+        f"Sensitive attribute binarised alphabetically: {', '.join(mapping_parts)}. "
+        f"Verify this reflects the intended privileged/unprivileged split.",
+        UserWarning,
+        stacklevel=3,
+    )
     return (encoded > encoded.min()).astype(int)
 
 def load_and_preprocess(path, sensitive_attr, target_col, positive_label):

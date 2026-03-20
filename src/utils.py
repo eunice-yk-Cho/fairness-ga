@@ -1,10 +1,10 @@
 import numpy as np
 
 def compute_feature_ranges(X):
-    ranges = []
-    for i in range(X.shape[1]):
-        ranges.append((np.min(X[:, i]), np.max(X[:, i])))
-    return ranges
+    # FIX #31: vectorized min/max instead of per-column loop
+    mins = X.min(axis=0)
+    maxs = X.max(axis=0)
+    return list(zip(mins.tolist(), maxs.tolist()))
 
 def make_sampler(feature_ranges, categorical_indices=frozenset()):
     """Return a callable that samples a random individual from the given feature ranges.

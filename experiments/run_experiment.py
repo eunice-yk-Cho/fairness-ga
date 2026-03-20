@@ -155,6 +155,24 @@ def main():
         feature_ranges = compute_feature_ranges(X_train)
         sampler = make_sampler(feature_ranges, categorical_indices)
 
+        # FIX #33b: Real test-set DP and EO using true labels (not proxy)
+        y_pred_test = model.predict(X_test)
+        groups = X_test[:, sensitive_index]
+        g0_mask = groups == 0
+        g1_mask = groups == 1
+        real_dp = float(abs(np.mean(y_pred_test[g0_mask]) - np.mean(y_pred_test[g1_mask])))
+        real_eo_diffs = []
+        for true_label in (0, 1):
+            true_mask = y_test == true_label
+            if np.sum(true_mask & g0_mask) == 0 or np.sum(true_mask & g1_mask) == 0:
+                continue
+            rate0 = float(np.mean(y_pred_test[true_mask & g0_mask]))
+            rate1 = float(np.mean(y_pred_test[true_mask & g1_mask]))
+            real_eo_diffs.append(abs(rate0 - rate1))
+        real_eo = float(max(real_eo_diffs) if real_eo_diffs else 0.0)
+        real_test_fairness = {"demographic_parity": real_dp, "equalized_odds": real_eo}
+        print(f"      Real test-set fairness — DP: {real_dp:.4f}, EO: {real_eo:.4f}")
+
         metrics = {
             "individual_count": {"ga": [], "rs": []},
             "individual_mean": {"ga": [], "rs": []},
@@ -171,6 +189,7 @@ def main():
 
             ga_details = _run_ga_trial(model, sampler, sensitive_index, feature_ranges, budget, ga_conf,
                                         categorical_indices)
+            config.set_seed(trial_seed + 10_000)  # FIX #33a: independent seed for RS
             rs_chunk = max(1, args.ga_population - 1)
             rs_details = random_search(
                 model=model,
@@ -241,6 +260,7 @@ def main():
             "dataset_path": str(ds_path),
             "sensitive_attr": ds_cfg["sensitive_attr"],
             "model_accuracy": {"train": train_acc, "test": test_acc},
+            "real_test_fairness": real_test_fairness,
             "metrics": metrics,
             "sensitivity": sensitivity,
         }

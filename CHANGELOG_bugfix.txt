@@ -737,23 +737,248 @@ FIX #26  [LOW]  download_adult.py always overwrites existing data
 
 
 ================================================================================
+  ROUND 5 FIXES  (2026-03-20, fifth review pass)
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #27  [MODERATE]  mean_curve inconsistency — elite excluded from generation mean
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     src/genetic_algorithm.py
+  Method:   GeneticAlgorithm.run()
+
+  PROBLEM:
+    mean_curve entries for generations ≥ 1 were computed from gen_scores,
+    which only contained offspring fitness values — the elite individual was
+    excluded.  This made generation-0 (mean over full population) inconsistent
+    with all subsequent entries (mean over offspring only).
+
+        # BEFORE (line 138)
+        mean_curve.append(float(np.mean(gen_scores)))
+
+  FIX:
+    Use new_fitness (elite + all offspring) for the mean, consistent with
+    how generation-0 is computed:
+
+        # AFTER
+        mean_curve.append(float(np.mean(new_fitness)))
+
+    gen_scores tracking variable removed as it is no longer needed.
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #28  [SIGNIFICANT/Performance]  Per-individual predict_proba calls — 100K
+         single-sample calls replaced by batched evaluation
+────────────────────────────────────────────────────────────────────────────────
+
+  Files:    src/genetic_algorithm.py, src/random_search.py
+
+  PROBLEM:
+    Both GA and RS called model.predict_proba([x]) once per individual for
+    original and once for flipped, resulting in up to 2 × 100K single-sample
+    calls per experiment.  sklearn RandomForest has per-call overhead that
+    makes this 10–50× slower than batched evaluation.
+
+  FIX (GA):
+    Added _batch_fitness(individuals) method that accepts a list of numpy
+    arrays, stacks them into one matrix, flips the sensitive column on a copy,
+    and calls predict_proba twice — once on originals, once on flipped.
+    Returns list[float] of |p1 - p2|, identical to repeated fitness() calls.
+
+    Initial population and all per-generation offspring now use _batch_fitness:
+
+        pop_fitness = self._batch_fitness(population)
+        ...
+        offspring_fitness = self._batch_fitness(offspring)
+
+    The inner generation loop now collects offspring first, then batch-evaluates
+    after all children are produced.
+
+  FIX (RS):
+    All samples generated upfront in a list comprehension, converted to a
+    single numpy array, then evaluated with two predict_proba calls instead
+    of 2×n_iter single calls:
+
+        samples = np.array([sampler() for _ in range(n_iter)])
+        samples_flip = samples.copy()
+        samples_flip[:, sensitive_index] = 1 - samples_flip[:, sensitive_index]
+        p1 = model.predict_proba(samples)[:, 1]
+        p2 = model.predict_proba(samples_flip)[:, 1]
+        scores = list(np.abs(p1 - p2))
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #29  [MINOR]  Redundant .copy() on child appended to all_samples
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     src/genetic_algorithm.py
+  Method:   GeneticAlgorithm.run()
+
+  PROBLEM:
+    all_samples.append(child.copy()) was called after child was already a
+    fresh array returned by mutate() (which does x = x.copy() internally).
+    The extra .copy() was redundant allocation.
+
+        # BEFORE (line 126)
+        all_samples.append(child.copy())
+
+  FIX:
+    Removed the redundant .copy(); all_samples.extend(offspring) appends
+    the already-fresh child objects directly:
+
+        # AFTER
+        all_samples.extend(offspring)
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #30  [MINOR]  RS partial final chunk handled incorrectly by modulo check
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     src/random_search.py
+
+  PROBLEM:
+    The convergence curve loop used (i + 1) % chunk_size == 0 to detect
+    chunk boundaries.  A final partial chunk (when n_iter % chunk_size != 0)
+    was only appended via the (i + 1) == n_iter fallback, which double-
+    triggered on the last iteration of a full-sized final chunk (appending
+    the same chunk twice when n_iter is an exact multiple of chunk_size).
+
+  FIX:
+    Compute full chunks with explicit index arithmetic, then append remainder
+    separately with a guard:
+
+        n_full_chunks = n_iter // chunk_size
+        for c in range(n_full_chunks):
+            start = c * chunk_size
+            chunk = scores[start:start + chunk_size]
+            ...
+
+        remainder_start = n_full_chunks * chunk_size
+        if remainder_start < n_iter:
+            chunk = scores[remainder_start:]
+            ...
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #31  [MINOR]  compute_feature_ranges uses slow Python loop
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     src/utils.py
+  Function: compute_feature_ranges()
+
+  PROBLEM:
+    Column-wise min/max was computed via a Python for-loop over X.shape[1]
+    columns, calling np.min/np.max on each column individually.
+
+        # BEFORE
+        for i in range(X.shape[1]):
+            ranges.append((np.min(X[:, i]), np.max(X[:, i])))
+
+  FIX:
+    Replaced with vectorized numpy operations across the full matrix:
+
+        # AFTER
+        mins = X.min(axis=0)
+        maxs = X.max(axis=0)
+        return list(zip(mins.tolist(), maxs.tolist()))
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #32  [MINOR]  LabelEncoder fallback path silent — mapping not disclosed
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     src/preprocessing.py
+  Function: _normalize_sensitive()
+
+  PROBLEM:
+    When the sensitive attribute has >2 string categories (e.g. COMPAS race
+    with 6 values), the code silently binarised to alphabetical-min → 0,
+    rest → 1 via LabelEncoder.  No warning was issued, making it impossible
+    to detect an unintended mapping without reading the source code.
+
+  FIX:
+    Added warnings.warn() with the full mapping printed explicitly, e.g.:
+      "Sensitive attribute binarised alphabetically:
+       african-american → 0, asian → 1, caucasian → 1, ..."
+    Users can now confirm the privileged/unprivileged assignment at runtime.
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #33a  [MINOR]  GA and RS share the same RNG state within each trial
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     experiments/run_experiment.py
+  Function: main() trial loop
+
+  PROBLEM:
+    Within each trial, GA ran first (consuming an unknown number of RNG draws),
+    then RS ran on the remaining RNG state.  GA and RS therefore did not have
+    independent random seeds — RS results depended on how many draws GA used,
+    making exact reproducibility fragile.
+
+  FIX:
+    After GA completes, the seed is reset to trial_seed + 10_000 before RS
+    starts, giving each method a matched but independent RNG state:
+
+        ga_details = _run_ga_trial(...)
+        config.set_seed(trial_seed + 10_000)  # FIX #33a
+        rs_details = random_search(...)
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #33b  [MODERATE]  No real test-set fairness metrics computed or saved
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     experiments/run_experiment.py
+  Function: main()
+
+  PROBLEM:
+    The existing DP and EO proxy metrics are computed over GA/RS-generated
+    (search-biased) samples, not the real test set.  There was no measurement
+    of the model's actual fairness on held-out data with true labels, making
+    it impossible to compare search-discovered bias with real-world bias.
+
+  FIX:
+    After model training, real test-set DP and EO are computed using
+    model.predict() (hard labels) against true y_test labels:
+
+        y_pred_test = model.predict(X_test)
+        groups = X_test[:, sensitive_index]
+        # DP: difference in positive prediction rates between groups
+        real_dp = |mean(y_hat | group=0) - mean(y_hat | group=1)|
+        # EO: max TPR/FPR gap across true-label strata
+        real_eo = max over true_label in {0,1} of |TPR_0 - TPR_1|
+
+    Results are printed and saved to combined_results.json under key
+    "real_test_fairness": {"demographic_parity": ..., "equalized_odds": ...}
+    for each dataset.
+
+
+================================================================================
   FILES MODIFIED (cumulative, all rounds)
 ================================================================================
 
   src/genetic_algorithm.py     — Elitism, running best_curve, categorical
                                  mutation, crossover clip removal, budget cap,
-                                 input validation, range-scaled mutation σ
-  src/random_search.py         — Running best_curve
-  src/utils.py                 — Integer sampling for categorical features
+                                 input validation, range-scaled mutation σ,
+                                 batch fitness evaluation, mean_curve fix,
+                                 redundant copy removal
+  src/random_search.py         — Running best_curve, batch evaluation,
+                                 partial chunk fix
+  src/utils.py                 — Integer sampling for categorical features,
+                                 vectorized feature range computation
   src/preprocessing.py         — Returns categorical_indices; sensitive_index
                                  included in categorical set; dead median path
-                                 replaced with ValueError
+                                 replaced with ValueError; LabelEncoder fallback
+                                 warning with explicit mapping
   src/model.py                 — Removed unused import and dead function
   src/metrics.py               — Removed dead code (success_rate, diversity)
   src/__init__.py              — Created (empty, marks src as a package)
   experiments/run_experiment.py — main() wrapping, accuracy logging,
                                  categorical_indices plumbing, seed fix,
-                                 GENERATIONS dead code removed, RS chunk_size
+                                 GENERATIONS dead code removed, RS chunk_size,
+                                 independent RS seed, real test-set fairness
   experiments/statistical_test.py — main() wrapping
   experiments/visualization.py — main() wrapping, independent x-axes for
                                  GA/RS convergence curves
