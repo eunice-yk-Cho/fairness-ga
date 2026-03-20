@@ -55,9 +55,9 @@ python experiments/run_experiment.py --datasets adult --trials 3 --budget 5000
 
 **All three datasets in parallel** (safe — results are merged atomically):
 ```bash
-python experiments/run_experiment.py --datasets adult  --trials 30 --budget 50000 --with-sensitivity&
-python experiments/run_experiment.py --datasets compas --trials 30 --budget 50000 --with-sensitivity&
-python experiments/run_experiment.py --datasets german --trials 30 --budget 50000 --with-sensitivity&
+python experiments/run_experiment.py --datasets adult --trials 30 --budget 50000 --with-sensitivity &
+python experiments/run_experiment.py --datasets compas --trials 30 --budget 50000 --with-sensitivity &
+python experiments/run_experiment.py --datasets german --trials 30 --budget 50000 --with-sensitivity &
 wait
 ```
 
