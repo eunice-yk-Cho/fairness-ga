@@ -46,12 +46,26 @@ This creates `data/adult.csv`, `data/compas.csv`, and `data/german_credit.csv`.
 python experiments/run_experiment.py
 ```
 
-Default settings: 30 trials, budget = 50,000 evaluations per method
-(`POPULATION_SIZE * GENERATIONS` in `src/config.py`).
+Default settings: 30 trials, 50,000 evaluations per method (set in `src/config.py`).
 
-Quick test:
+**Quick test (single dataset):**
 ```bash
 python experiments/run_experiment.py --datasets adult --trials 3 --budget 5000
+```
+
+**All three datasets in parallel** (safe — results are merged atomically):
+```bash
+python experiments/run_experiment.py --datasets adult  --trials 30 --budget 50000 --with-sensitivity&
+python experiments/run_experiment.py --datasets compas --trials 30 --budget 50000 --with-sensitivity&
+python experiments/run_experiment.py --datasets german --trials 30 --budget 50000 --with-sensitivity&
+wait
+```
+
+Each process writes only its own dataset into `combined_results.json` without
+overwriting the others.
+
+**With hyperparameter sensitivity:**
+```bash
 python experiments/run_experiment.py --with-sensitivity --sensitivity-trials 3
 ```
 

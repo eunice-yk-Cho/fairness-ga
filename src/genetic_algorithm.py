@@ -10,8 +10,8 @@ class GeneticAlgorithm:
         pop = getattr(config, "POPULATION_SIZE", None)
         tk = getattr(config, "TOURNAMENT_K", None)
         mr = getattr(config, "MUTATION_RATE", None)
-        if pop is not None and pop < 1:
-            raise ValueError(f"POPULATION_SIZE must be >= 1, got {pop}")
+        if pop is not None and pop < 2:
+            raise ValueError(f"POPULATION_SIZE must be >= 2, got {pop}")
         if tk is not None and pop is not None and tk > pop:
             raise ValueError(
                 f"TOURNAMENT_K ({tk}) must be <= POPULATION_SIZE ({pop})")
@@ -124,6 +124,8 @@ class GeneticAlgorithm:
             for _ in range(n_offspring):
                 p1 = self.tournament_selection(population, pop_fitness)
                 p2 = self.tournament_selection(population, pop_fitness)
+                if len(population) > 1 and np.array_equal(p1, p2):
+                    p2 = self.tournament_selection(population, pop_fitness)
                 child = self.crossover(p1, p2)
                 child = self.mutate(child)
                 offspring.append(child)

@@ -31,10 +31,9 @@ def _normalize_sensitive(series):
     encoded = le.fit_transform(lower)
     # FIX #32: warn about alphabetical-min→0 mapping so users can verify intent
     min_enc = int(encoded.min())
-    mapping_parts = [
-        f"{cls} \u2192 {0 if i == min_enc else 1}"
-        for i, cls in enumerate(le.classes_)
-    ]
+    mapping_parts = []
+    for cls, enc_val in zip(le.classes_, le.transform(le.classes_)):
+        mapping_parts.append(f"{cls} \u2192 {0 if enc_val == min_enc else 1}")
     warnings.warn(
         f"Sensitive attribute binarised alphabetically: {', '.join(mapping_parts)}. "
         f"Verify this reflects the intended privileged/unprivileged split.",

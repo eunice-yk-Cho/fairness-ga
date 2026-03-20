@@ -978,15 +978,212 @@ FIX #33b  [MODERATE]  No real test-set fairness metrics computed or saved
   experiments/run_experiment.py — main() wrapping, accuracy logging,
                                  categorical_indices plumbing, seed fix,
                                  GENERATIONS dead code removed, RS chunk_size,
-                                 independent RS seed, real test-set fairness
+                                 independent RS seed, real test-set fairness,
+                                 parallel-safe merge (#34), _pad_curves (#36)
   experiments/statistical_test.py — main() wrapping
   experiments/visualization.py — main() wrapping, independent x-axes for
                                  GA/RS convergence curves
+  src/genetic_algorithm.py     — (see above) + pop<2 guard (#35),
+                                 self-crossover retry (#37)
+  src/preprocessing.py         — (see above) + FIX #38 (enumerate→enc_val)
   scripts/download_adult.py    — Skip download if file already exists
   scripts/download_benchmark_datasets.py — German Credit "unknown" → NaN
   report.tex                   — EO proxy caveat, COMPAS race binarisation,
-                                 DP/EO interpretation warning
+                                 DP/EO interpretation warning, STALE-1,3,4,5
   advanced.txt                 — Rewritten as post-implementation status
   requirements.txt             — Version ranges added
+
+================================================================================
+
+
+================================================================================
+  ROUND 6 FIXES  (2026-03-20, sixth review pass)
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #34  [HIGH]  Parallel-run race condition — combined_results.json overwritten
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     experiments/run_experiment.py
+
+  PROBLEM:
+    Running three parallel processes (--datasets adult, compas, german) caused
+    each to overwrite combined_results.json with only its own dataset entry.
+    Whichever process finished last won, discarding the others.
+
+        # BEFORE (lines 268-269)
+        combined_path.write_text(json.dumps(combined, ...), encoding="utf-8")
+
+  FIX:
+    Added helper _merge_into_combined(combined_path, dataset_key, dataset_entry,
+    config_entry).  Uses os.open(O_CREAT|O_EXCL) as a cross-platform spin-lock
+    (works on both Windows python.exe and POSIX — unlike fcntl which is POSIX-only).
+    The helper:
+      1. Spins until it atomically creates a .lock sidecar file (O_CREAT|O_EXCL).
+      2. Reads existing combined_results.json (or starts fresh).
+      3. Merges dataset_entry under combined["datasets"][dataset_key].
+      4. Overwrites combined_results.json atomically.
+      5. Unlinks the .lock file in a finally block.
+    Called immediately after all trial results are collected, once per dataset.
+    The top-level combined dict accumulator and the final write_text call are
+    removed.
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #35  [MEDIUM]  Infinite loop when POPULATION_SIZE=1
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     src/genetic_algorithm.py
+  Method:   GeneticAlgorithm.__init__()
+
+  PROBLEM:
+    n_offspring = min(POPULATION_SIZE - 1, ...) = 0 when POP=1.
+    eval_count never increments → infinite loop.
+
+  FIX:
+    Guard tightened from pop < 1 to pop < 2:
+
+        # BEFORE
+        if pop is not None and pop < 1:
+            raise ValueError(f"POPULATION_SIZE must be >= 1, got {pop}")
+
+        # AFTER
+        if pop is not None and pop < 2:
+            raise ValueError(f"POPULATION_SIZE must be >= 2, got {pop}")
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #36  [HIGH]  Jagged convergence curves crash np.asarray in numpy ≥ 1.24
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     experiments/run_experiment.py
+
+  PROBLEM:
+    When budget is not divisible by (POPULATION_SIZE - 1), different trials
+    produce convergence curves of different lengths.  np.asarray(curve_list,
+    dtype=float) raises ValueError in numpy ≥ 1.24 on a ragged sequence.
+
+  FIX:
+    Added _pad_curves(curve_list) helper that forward-fills each curve to the
+    maximum length by repeating the last value.  Applied to all four convergence
+    lists (ga_best, ga_mean, rs_best, rs_mean) before np.asarray:
+
+        ga_best=np.asarray(_pad_curves(curves["ga_best"]), dtype=float),
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #37  [LOW]  Self-crossover → diversity collapse
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     src/genetic_algorithm.py
+  Method:   GeneticAlgorithm.run()
+
+  PROBLEM:
+    tournament_selection is called independently for p1 and p2; same individual
+    can be selected twice.  A child that is the crossover of an individual with
+    itself is just a noisy copy, weakening genetic diversity.
+
+  FIX:
+    After selecting p2, retry once if p1 and p2 are identical and the
+    population has more than one distinct individual:
+
+        p2 = self.tournament_selection(population, pop_fitness)
+        if len(population) > 1 and np.array_equal(p1, p2):
+            p2 = self.tournament_selection(population, pop_fitness)
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #38  [LOW]  Fragile enumerate index in preprocessing warning
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     src/preprocessing.py
+  Function: _normalize_sensitive()
+
+  PROBLEM:
+    The mapping string used enumerate index i coincidentally equal to the
+    LabelEncoder's encoded value, but only by accident.  If the encoder
+    ever changes ordering, the 0/1 label in the warning would be wrong.
+
+        # BEFORE
+        mapping_parts = [
+            f"{cls} → {0 if i == min_enc else 1}"
+            for i, cls in enumerate(le.classes_)
+        ]
+
+  FIX:
+    Use actual encoded values from le.transform():
+
+        # AFTER
+        for cls, enc_val in zip(le.classes_, le.transform(le.classes_)):
+            mapping_parts.append(f"{cls} → {0 if enc_val == min_enc else 1}")
+
+
+────────────────────────────────────────────────────────────────────────────────
+STALE-1  report.tex — Scalability bullet contradicts batch evaluation
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     report.tex  (Reflection section)
+
+  PROBLEM:
+    Bullet claimed "evaluates one sample at a time" after FIX #28 implemented
+    batch evaluation.  Future-work sentence also listed "batch evaluation for
+    scalability" as pending.
+
+  FIX:
+    Bullet now acknowledges batch evaluation is implemented (10-50x speedup)
+    and notes remaining concern is parallelism across trials.
+    "batch evaluation for scalability" removed from future-work sentence.
+
+
+────────────────────────────────────────────────────────────────────────────────
+STALE-3  report.tex — Missing explanation for ~53% DP trial-level win rate
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     report.tex  (Discussion section)
+
+  PROBLEM:
+    DP significance was stated without explaining why a ~53% win rate leads to
+    a significant Wilcoxon result.
+
+  FIX:
+    Added sentence after the DP/EO-proxy interpretation paragraph:
+    "The ~53% trial-level win rate for DP reflects that GA significance is
+    driven by magnitude (a few trials with very large gaps) rather than
+    consistency; the Wilcoxon test weights differences, not just direction."
+
+
+────────────────────────────────────────────────────────────────────────────────
+STALE-4  report.tex — Table 1 German ID-count bimodal distribution undocumented
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     report.tex  (Table 1)
+
+  PROBLEM:
+    German ID-count (3257 ± 12188) is highly misleading without context:
+    28/30 trials are 0, 2/30 trials are ~49,000.  Mean ± std does not convey
+    this bimodal shape.
+
+  FIX:
+    Added \footnotemark to the German ID count cell and a \footnotetext after
+    the table:
+    "Distribution is bimodal (28/30 trials: 0; 2/30 trials: ~49,000);
+    mean±std is shown for comparability but median would be 0."
+
+
+────────────────────────────────────────────────────────────────────────────────
+STALE-5  report.tex — "~49,500" claim imprecise and "drops slightly" wrong
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     report.tex  (Hyperparameter sensitivity subsection)
+
+  PROBLEM:
+    Sensitivity description said pm=0.05 "drops slightly" without quantifying.
+    Also omitted that pm=0.1 also achieves ~49,500.
+
+  FIX:
+    Revised to: "pm=0.1 and pm=0.2 with N=40 achieve ~49,500 ID-count, while
+    pm=0.05 drops to ~39,200 (a 21% decrease)."  "drops slightly" removed.
+
 
 ================================================================================

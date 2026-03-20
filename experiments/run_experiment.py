@@ -3,6 +3,8 @@ import sys
 from pathlib import Path
 import argparse
 import json
+import os
+import time
 from types import SimpleNamespace
 
 # Add project root to path so that `src` is importable when running from repo root
@@ -23,6 +25,37 @@ from src.metrics import (
     demographic_parity_difference,
     equalized_odds_difference_proxy,
 )
+
+def _merge_into_combined(combined_path, dataset_key, dataset_entry, config_entry):
+    """Atomically read-modify-write combined_results.json using an exclusive lock file.
+
+    Uses os.open with O_CREAT|O_EXCL for a cross-platform spin-lock — the only
+    call that atomically fails if the file already exists on both Windows and POSIX.
+    """
+    lock_path = combined_path.with_suffix(".lock")
+    while True:
+        try:
+            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(fd)
+            break
+        except FileExistsError:
+            time.sleep(0.05)
+    try:
+        if combined_path.exists():
+            combined = json.loads(combined_path.read_text(encoding="utf-8"))
+        else:
+            combined = {"datasets": {}, "config": config_entry}
+        combined["datasets"][dataset_key] = dataset_entry
+        combined_path.write_text(json.dumps(combined, indent=2, ensure_ascii=False), encoding="utf-8")
+    finally:
+        os.unlink(str(lock_path))
+
+
+def _pad_curves(curve_list):
+    """Forward-fill each curve to the maximum length so np.asarray produces a 2D array."""
+    max_len = max(len(c) for c in curve_list)
+    return [c + [c[-1]] * (max_len - len(c)) for c in curve_list]
+
 
 def _parse_csv_list(raw, cast):
     return [cast(x.strip()) for x in raw.split(",") if x.strip()]
@@ -119,13 +152,6 @@ def main():
     results_root = _root / "experiments" / "results"
     results_root.mkdir(parents=True, exist_ok=True)
 
-    combined = {"datasets": {}, "config": {
-        "trials": n_trials,
-        "budget": budget,
-        "ga_population": args.ga_population,
-        "ga_mutation": args.ga_mutation,
-    }}
-
     print(f"[1/5] Starting experiment loop (datasets={dataset_keys}, trials={n_trials}, budget={budget})")
     for dataset_key in dataset_keys:
         if dataset_key not in config.DATASET_CONFIGS:
@@ -151,7 +177,7 @@ def main():
         model = train_model(X_train, y_train)
         train_acc = accuracy_score(y_train, model.predict(X_train))
         test_acc = accuracy_score(y_test, model.predict(X_test))
-        print(f"      Model accuracy — train: {train_acc:.4f}, test: {test_acc:.4f}")
+        print(f"      Model accuracy - train: {train_acc:.4f}, test: {test_acc:.4f}")
         feature_ranges = compute_feature_ranges(X_train)
         sampler = make_sampler(feature_ranges, categorical_indices)
 
@@ -171,7 +197,7 @@ def main():
             real_eo_diffs.append(abs(rate0 - rate1))
         real_eo = float(max(real_eo_diffs) if real_eo_diffs else 0.0)
         real_test_fairness = {"demographic_parity": real_dp, "equalized_odds": real_eo}
-        print(f"      Real test-set fairness — DP: {real_dp:.4f}, EO: {real_eo:.4f}")
+        print(f"      Real test-set fairness - DP: {real_dp:.4f}, EO: {real_eo:.4f}")
 
         metrics = {
             "individual_count": {"ga": [], "rs": []},
@@ -231,10 +257,10 @@ def main():
         )
         np.savez(
             ds_dir / "convergence.npz",
-            ga_best=np.asarray(curves["ga_best"], dtype=float),
-            ga_mean=np.asarray(curves["ga_mean"], dtype=float),
-            rs_best=np.asarray(curves["rs_best"], dtype=float),
-            rs_mean=np.asarray(curves["rs_mean"], dtype=float),
+            ga_best=np.asarray(_pad_curves(curves["ga_best"]), dtype=float),
+            ga_mean=np.asarray(_pad_curves(curves["ga_mean"]), dtype=float),
+            rs_best=np.asarray(_pad_curves(curves["rs_best"]), dtype=float),
+            rs_mean=np.asarray(_pad_curves(curves["rs_mean"]), dtype=float),
         )
 
         sensitivity = []
@@ -256,7 +282,7 @@ def main():
                 encoding="utf-8",
             )
 
-        combined["datasets"][dataset_key] = {
+        dataset_entry = {
             "dataset_path": str(ds_path),
             "sensitive_attr": ds_cfg["sensitive_attr"],
             "model_accuracy": {"train": train_acc, "test": test_acc},
@@ -264,10 +290,15 @@ def main():
             "metrics": metrics,
             "sensitivity": sensitivity,
         }
-
-    combined_path = results_root / "combined_results.json"
-    combined_path.write_text(json.dumps(combined, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"\nDone: {combined_path}")
+        combined_path = results_root / "combined_results.json"
+        config_entry = {
+            "trials": n_trials,
+            "budget": budget,
+            "ga_population": args.ga_population,
+            "ga_mutation": args.ga_mutation,
+        }
+        _merge_into_combined(combined_path, dataset_key, dataset_entry, config_entry)
+        print(f"\nDone ({dataset_key}): {combined_path}")
 
 
 if __name__ == "__main__":
