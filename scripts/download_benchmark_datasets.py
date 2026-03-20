@@ -82,9 +82,7 @@ def download_german():
         "A94": "male",
         "A95": "female",
     }
-    df["sex"] = df["personal_status"].map(sex_map).fillna("unknown")
-    # UCI Statlog german.data uses numeric labels (1=good, 2=bad).
-    # Some variants may use A201/A202, so we support both.
+    df["sex"] = df["personal_status"].map(sex_map)
     df["class"] = (
         df["class"]
         .astype(str)

@@ -5,12 +5,24 @@ from src.fairness import discrimination_score
 
 class GeneticAlgorithm:
 
-    def __init__(self, model, sampler, sensitive_index, config, feature_ranges=None):
+    def __init__(self, model, sampler, sensitive_index, config,
+                 feature_ranges=None, categorical_indices=frozenset()):
+        pop = getattr(config, "POPULATION_SIZE", None)
+        tk = getattr(config, "TOURNAMENT_K", None)
+        mr = getattr(config, "MUTATION_RATE", None)
+        if pop is not None and pop < 1:
+            raise ValueError(f"POPULATION_SIZE must be >= 1, got {pop}")
+        if tk is not None and pop is not None and tk > pop:
+            raise ValueError(
+                f"TOURNAMENT_K ({tk}) must be <= POPULATION_SIZE ({pop})")
+        if mr is not None and not (0.0 <= mr <= 1.0):
+            raise ValueError(f"MUTATION_RATE must be in [0, 1], got {mr}")
         self.model = model
         self.sampler = sampler
         self.sensitive_index = sensitive_index
         self.config = config
         self.feature_ranges = feature_ranges
+        self.categorical_indices = categorical_indices
 
     def initialize_population(self):
         return [self.sampler() for _ in range(self.config.POPULATION_SIZE)]
@@ -27,20 +39,22 @@ class GeneticAlgorithm:
     def crossover(self, p1, p2):
         mask = np.random.rand(len(p1)) < 0.5
         child = np.where(mask, p1, p2)
-        if self.feature_ranges is not None:
-            lo = np.array([r[0] for r in self.feature_ranges])
-            hi = np.array([r[1] for r in self.feature_ranges])
-            child = np.clip(child, lo, hi)
         return child
 
     def mutate(self, x):
         x = x.copy()
         if np.random.rand() < self.config.MUTATION_RATE:
             idx = np.random.randint(len(x))
-            x[idx] += np.random.normal(0, 0.1)
-            if self.feature_ranges is not None:
+            if idx in self.categorical_indices:
                 lo, hi = self.feature_ranges[idx]
+                x[idx] = np.random.randint(int(lo), int(hi) + 1)
+            elif self.feature_ranges is not None:
+                lo, hi = self.feature_ranges[idx]
+                sigma = (hi - lo) * 0.05
+                x[idx] += np.random.normal(0, max(sigma, 1e-9))
                 x[idx] = np.clip(x[idx], lo, hi)
+            else:
+                x[idx] += np.random.normal(0, 0.1)
         return x
 
     def _resolve_max_evals(self, n_evals):
@@ -64,15 +78,19 @@ class GeneticAlgorithm:
 
     def run(self, n_evals=None, return_details=False):
         max_evals = self._resolve_max_evals(n_evals)
+        if max_evals <= 0:
+            raise ValueError(f"max_evals must be > 0, got {max_evals}")
         report_every = max(1, max_evals // 10)
         next_report = report_every
 
-        population = self.initialize_population()
+        init_size = min(self.config.POPULATION_SIZE, max_evals)
+        population = [self.sampler() for _ in range(init_size)]
         pop_fitness = [self.fitness(x) for x in population]
 
         all_scores = list(pop_fitness)
         all_samples = [x.copy() for x in population]
-        best_curve = [float(np.max(pop_fitness))]
+        running_best = float(np.max(pop_fitness))
+        best_curve = [running_best]
         mean_curve = [float(np.mean(pop_fitness))]
         eval_count = len(population)
 
@@ -82,11 +100,15 @@ class GeneticAlgorithm:
                 next_report += report_every
 
         while eval_count < max_evals:
-            new_population = []
-            new_fitness = []
+            elite_idx = int(np.argmax(pop_fitness))
+            elite = population[elite_idx].copy()
+            elite_fit = pop_fitness[elite_idx]
+
+            new_population = [elite]
+            new_fitness = [elite_fit]
             gen_scores = []
 
-            for _ in range(self.config.POPULATION_SIZE):
+            for _ in range(self.config.POPULATION_SIZE - 1):
                 if eval_count >= max_evals:
                     break
 
@@ -110,12 +132,13 @@ class GeneticAlgorithm:
                         next_report += report_every
 
             if gen_scores:
-                best_curve.append(float(np.max(gen_scores)))
+                gen_best = float(np.max(gen_scores))
+                running_best = max(running_best, gen_best)
+                best_curve.append(running_best)
                 mean_curve.append(float(np.mean(gen_scores)))
 
-            if new_population:
-                population = new_population
-                pop_fitness = new_fitness
+            population = new_population
+            pop_fitness = new_fitness
 
         if return_details:
             return {

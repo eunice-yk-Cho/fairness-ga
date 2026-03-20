@@ -147,7 +147,8 @@ search is arguably not learning useful structure.
     \item \textbf{Datasets}: Adult (48\,842 records, 14 features), COMPAS
           (7\,214 records, 8 features), German Credit (1\,000 records, 20 features).
     \item \textbf{Sensitive attributes}: \texttt{sex} (Adult),
-          \texttt{race} (COMPAS), \texttt{sex} (German).
+          \texttt{race} (COMPAS, binarised as African-American~$=0$ vs.\ all
+          other races~$=1$), \texttt{sex} (German).
     \item \textbf{Classifier}: \texttt{RandomForestClassifier} (scikit-learn,
           default hyperparameters, \texttt{random\_state=42}).
     \item \textbf{Trials}: 30 independent runs with different random seeds.
@@ -162,9 +163,17 @@ search is arguably not learning useful structure.
         \item Mean individual discrimination score:
               $\bar{D}$.
         \item Demographic parity difference (DP diff):
-              $|\text{rate}_{g=0} - \text{rate}_{g=1}|$ over generated samples.
-        \item Equalized odds difference (EO diff, proxy):
-              max group-rate gap conditioned on counterfactual labels.
+              $|\text{rate}_{g=0} - \text{rate}_{g=1}|$ computed over
+              \emph{generated} (not real-data) samples.  Because GA-generated
+              samples are biased toward discriminatory regions, this metric
+              reflects search effectiveness rather than the model's overall
+              demographic parity.
+        \item Counterfactual prediction gap (EO proxy):
+              the maximum group-rate difference conditioned on counterfactual
+              model predictions obtained by flipping the sensitive attribute.
+              This is \emph{not} standard equalized odds, which conditions on
+              true labels; generated inputs have no ground-truth labels, so
+              counterfactual predictions serve as a proxy.
     \end{enumerate}
 \end{itemize}
 
@@ -272,6 +281,10 @@ deserves attention.  Because the GA directs search toward high-discrimination re
 generated samples are not representative of the overall input distribution, so the
 group-level rate difference fluctuates heavily between trials.  This is not a failure of
 the GA; it is an artefact of measuring a group-level metric on a non-uniform sample.
+Readers should therefore interpret the DP and EO-proxy columns in Table~\ref{tab:main-results}
+as measures of \emph{search-biased fairness gap}---i.e.\ how large a disparity the search
+method can uncover---rather than as estimates of the model's demographic parity or
+equalized odds on the real data distribution.
 
 % ===================================================================
 \section{Reflection}
@@ -283,9 +296,11 @@ There are several limitations to acknowledge:
           synthetic samples drawn uniformly from training-data feature ranges, not from
           the real data distribution.  Discrimination found in low-density regions may
           rarely occur in practice.
-    \item \textbf{Equalized-odds proxy.} Because generated inputs have no ground-truth
-          labels, I use counterfactual model predictions as a substitute.  This proxy may
-          over- or under-estimate the true equalized-odds gap.
+    \item \textbf{Counterfactual prediction gap (EO proxy).} Because generated inputs
+          have no ground-truth labels, I condition on counterfactual model predictions
+          (flipping the sensitive attribute) rather than true labels.  This metric is
+          therefore \emph{not} standard equalized odds; it is closer to a counterfactual
+          fairness measure and may over- or under-estimate the true equalized-odds gap.
     \item \textbf{Fixed threshold.} The $D(x) > 0.2$ threshold works well for Adult and
           COMPAS but is too aggressive for German Credit.  An adaptive or
           dataset-specific threshold would give a more nuanced view.

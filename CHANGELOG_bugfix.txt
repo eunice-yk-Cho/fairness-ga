@@ -1,0 +1,767 @@
+================================================================================
+  fairness-ga  —  Code Review & Bugfix Changelog
+  Date: 2026-03-19
+================================================================================
+
+A comprehensive project-level code review was performed.  This document records
+every problem found, its severity, the exact location in the original code, and
+the fix that was applied.  Issues that were identified but NOT fixed (design-
+level concerns that require deeper discussion) are listed separately at the end.
+
+
+================================================================================
+  FIXED ISSUES
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #1  [CRITICAL]  GA missing elitism — best individual lost every generation
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     src/genetic_algorithm.py
+  Method:   GeneticAlgorithm.run()
+
+  PROBLEM:
+    Every generation, the entire population was replaced unconditionally:
+
+        # BEFORE (lines 116-118)
+        if new_population:
+            population = new_population
+            pop_fitness = new_fitness
+
+    The best individual from generation N was never carried over to
+    generation N+1.  This is a well-known anti-pattern in GA design.
+    Without elitism the GA can "forget" the best solution it ever found,
+    causing the search to regress.
+
+  FIX:
+    Before building the new generation, the single fittest individual from the
+    current population is copied into the next generation without re-evaluation.
+    The inner loop now produces (POPULATION_SIZE - 1) offspring so the total
+    evaluation budget is unchanged.
+
+        # AFTER (lines 87-96)
+        while eval_count < max_evals:
+            elite_idx = int(np.argmax(pop_fitness))
+            elite = population[elite_idx].copy()
+            elite_fit = pop_fitness[elite_idx]
+
+            new_population = [elite]
+            new_fitness = [elite_fit]
+            gen_scores = []
+
+            for _ in range(self.config.POPULATION_SIZE - 1):
+                ...
+
+    The unconditional replacement at the bottom is now safe because the
+    elite is always present:
+
+        population = new_population
+        pop_fitness = new_fitness
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #2  [CRITICAL]  best_curve tracked per-generation max, not running max
+────────────────────────────────────────────────────────────────────────────────
+
+  Files:    src/genetic_algorithm.py, src/random_search.py
+
+  PROBLEM:
+    A "convergence curve" must be monotonically non-decreasing (the best
+    score found *so far*).  Both GA and Random Search recorded only the
+    max within the current generation/chunk, so the curve could go DOWN.
+
+        # BEFORE — genetic_algorithm.py (line 113)
+        best_curve.append(float(np.max(gen_scores)))
+
+        # BEFORE — random_search.py (line 18)
+        best_curve.append(float(np.max(chunk)))
+
+  FIX:
+    Introduced a `running_best` variable that is updated with each new
+    generation/chunk and never decreases.
+
+        # AFTER — genetic_algorithm.py (lines 77-78, 119-122)
+        running_best = float(np.max(pop_fitness))
+        best_curve = [running_best]
+        ...
+            if gen_scores:
+                gen_best = float(np.max(gen_scores))
+                running_best = max(running_best, gen_best)
+                best_curve.append(running_best)
+
+        # AFTER — random_search.py (lines 9, 19-20)
+        running_best = -np.inf
+        ...
+            running_best = max(running_best, float(np.max(chunk)))
+            best_curve.append(running_best)
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #3  [HIGH]  Sampler produced continuous floats for categorical features
+────────────────────────────────────────────────────────────────────────────────
+
+  Files:    src/utils.py, src/preprocessing.py, src/genetic_algorithm.py,
+            experiments/run_experiment.py
+
+  PROBLEM:
+    Features like workclass, education, marital-status (Adult), c_charge_degree
+    (COMPAS), etc. are LabelEncoded to integers 0, 1, 2, ...  The sampler used
+    np.random.uniform() for ALL features, producing values like 2.37 that the
+    model never saw during training (out-of-distribution).
+
+        # BEFORE — utils.py (lines 11-12)
+        def sampler():
+            return np.array([np.random.uniform(lo, hi) for lo, hi in feature_ranges])
+
+    Similarly, mutation in the GA added Gaussian noise to every feature
+    regardless of type.
+
+  FIX:
+
+    a) preprocessing.py now identifies and returns categorical column indices:
+
+        # AFTER — preprocessing.py (lines 40-50)
+        categorical_cols = set()
+        for col in X.columns:
+            if not pd.api.types.is_numeric_dtype(X[col]):
+                le = LabelEncoder()
+                X[col] = le.fit_transform(X[col].astype(str))
+                encoders[col] = le
+                categorical_cols.add(col)
+
+        col_list = list(X.columns)
+        sensitive_index = col_list.index(sensitive_attr)
+        categorical_indices = frozenset(col_list.index(c) for c in categorical_cols)
+        ...
+        return X_train, X_test, y_train, y_test, sensitive_index, categorical_indices
+
+    b) utils.py samples integers for categorical features:
+
+        # AFTER — utils.py (lines 9-23)
+        def make_sampler(feature_ranges, categorical_indices=frozenset()):
+            def sampler():
+                x = np.empty(len(feature_ranges))
+                for i, (lo, hi) in enumerate(feature_ranges):
+                    if i in categorical_indices:
+                        x[i] = np.random.randint(int(lo), int(hi) + 1)
+                    else:
+                        x[i] = np.random.uniform(lo, hi)
+                return x
+            return sampler
+
+    c) genetic_algorithm.py mutates categorical features by re-sampling an
+       integer rather than adding Gaussian noise:
+
+        # AFTER — genetic_algorithm.py (lines 34-46)
+        def mutate(self, x):
+            x = x.copy()
+            if np.random.rand() < self.config.MUTATION_RATE:
+                idx = np.random.randint(len(x))
+                if idx in self.categorical_indices:
+                    lo, hi = self.feature_ranges[idx]
+                    x[idx] = np.random.randint(int(lo), int(hi) + 1)
+                else:
+                    x[idx] += np.random.normal(0, 0.1)
+                    if self.feature_ranges is not None:
+                        lo, hi = self.feature_ranges[idx]
+                        x[idx] = np.clip(x[idx], lo, hi)
+            return x
+
+    d) run_experiment.py threads categorical_indices through to GA and sampler
+       (lines 48-58, 60-72, 143-157, 168-174, 221-234).
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #4  [HIGH]  German Credit "unknown" sex treated as "male"
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     scripts/download_benchmark_datasets.py
+  Function: download_german()
+
+  PROBLEM:
+    personal_status codes not in the sex_map were filled with "unknown":
+
+        # BEFORE (line 85)
+        df["sex"] = df["personal_status"].map(sex_map).fillna("unknown")
+
+    Since dropna() only drops NaN (not "unknown"), these rows survived.
+    In _normalize_sensitive(), LabelEncoder ordered them alphabetically:
+    "female"=0, "male"=1, "unknown"=2.  The binarisation
+    (encoded > encoded.min()) mapped "unknown" to the same group as "male",
+    silently corrupting the fairness analysis.
+
+  FIX:
+    Unmapped rows now stay as NaN and are removed by the existing dropna():
+
+        # AFTER (line 85)
+        df["sex"] = df["personal_status"].map(sex_map)
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #5  [LOW]  Dead code — unnecessary clip in crossover
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     src/genetic_algorithm.py
+  Method:   GeneticAlgorithm.crossover()
+
+  PROBLEM:
+    Uniform crossover copies each gene from one of two parents.  Both parents
+    are already within feature_ranges, so the child is guaranteed to be in
+    range.  The np.clip was dead code.
+
+        # BEFORE (lines 27-34)
+        def crossover(self, p1, p2):
+            mask = np.random.rand(len(p1)) < 0.5
+            child = np.where(mask, p1, p2)
+            if self.feature_ranges is not None:
+                lo = np.array([r[0] for r in self.feature_ranges])
+                hi = np.array([r[1] for r in self.feature_ranges])
+                child = np.clip(child, lo, hi)
+            return child
+
+  FIX:
+    Removed the unnecessary clip:
+
+        # AFTER (lines 29-32)
+        def crossover(self, p1, p2):
+            mask = np.random.rand(len(p1)) < 0.5
+            child = np.where(mask, p1, p2)
+            return child
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #6  [LOW]  Unused import and dead function in model.py
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     src/model.py
+
+  PROBLEM:
+    train_test_split was imported but never used.  The standalone function
+    predict_proba() was defined but never called anywhere in the project;
+    all code calls model.predict_proba() directly.
+
+        # BEFORE (lines 1-10)
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.model_selection import train_test_split
+
+        def train_model(X, y):
+            model = RandomForestClassifier(random_state=42)
+            model.fit(X, y)
+            return model
+
+        def predict_proba(model, x):
+            return model.predict_proba([x])[0][1]
+
+  FIX:
+    Removed both:
+
+        # AFTER (lines 1-6)
+        from sklearn.ensemble import RandomForestClassifier
+
+
+        def train_model(X, y):
+            model = RandomForestClassifier(random_state=42)
+            model.fit(X, y)
+            return model
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #7  [MEDIUM]  Test data (X_test, y_test) never used — no accuracy reported
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     experiments/run_experiment.py
+
+  PROBLEM:
+    load_and_preprocess() performs a 70/30 train-test split, but X_test and
+    y_test were completely ignored.  No model accuracy was ever logged, so
+    there was no way to know whether the classifier was any good.
+
+  FIX:
+    After training, train and test accuracy are computed, printed, and saved
+    into combined_results.json:
+
+        # AFTER (lines 152-155, 243)
+        model = train_model(X_train, y_train)
+        train_acc = accuracy_score(y_train, model.predict(X_train))
+        test_acc = accuracy_score(y_test, model.predict(X_test))
+        print(f"      Model accuracy — train: {train_acc:.4f}, test: {test_acc:.4f}")
+        ...
+        "model_accuracy": {"train": train_acc, "test": test_acc},
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #8  [LOW]  Missing src/__init__.py
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     src/__init__.py (new)
+
+  PROBLEM:
+    The src/ directory had no __init__.py, relying on Python 3.3+ implicit
+    namespace packages.  This can cause issues with pytest, IDE tooling, and
+    explicit package discovery.
+
+  FIX:
+    Created an empty src/__init__.py.
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #9  [MEDIUM]  Module-level argparse prevents import/testing
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     experiments/run_experiment.py
+
+  PROBLEM:
+    parser.parse_args() was executed at module top-level (old line 105).
+    Simply importing this module would trigger argument parsing against
+    sys.argv, making it impossible to import for testing or reuse.
+
+        # BEFORE (lines 80-109)
+        parser = argparse.ArgumentParser(...)
+        ...
+        args = parser.parse_args()
+
+        config.set_seed()
+        budget = args.budget
+        ...
+
+  FIX:
+    All argument parsing and execution logic wrapped in main(), called via
+    if __name__ == "__main__":
+
+        # AFTER (lines 85, 253-254)
+        def main():
+            parser = argparse.ArgumentParser(...)
+            ...
+
+        if __name__ == "__main__":
+            main()
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #10  [LOW]  Sensitivity analysis seed collisions
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     experiments/run_experiment.py
+  Function: _run_sensitivity()
+
+  PROBLEM:
+    The seed formula could produce identical seeds for different parameter
+    combinations:
+
+        # BEFORE (line 65)
+        trial_seed = config.RANDOM_SEED + 10_000 + t + (pop_size * 100) + int(mutation_rate * 1000)
+
+    Example collision: (t=0, pop=10, rate=0.2) and (t=0, pop=12, rate=0.0)
+    both produce seed 11242.
+
+  FIX:
+    Use prime-number multipliers so hash values spread out:
+
+        # AFTER (line 69)
+        trial_seed = config.RANDOM_SEED + 10_000 + t * 7 + pop_size * 131 + int(mutation_rate * 10000) * 37
+
+
+================================================================================
+  ROUND 2 FIXES  (2026-03-19, follow-up review)
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #11  [HIGH]  GA budget overflow when budget < POPULATION_SIZE
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     src/genetic_algorithm.py
+  Method:   GeneticAlgorithm.run()
+
+  PROBLEM:
+    initialize_population() always created POPULATION_SIZE individuals and
+    evaluated them all.  If budget < POPULATION_SIZE, this silently exceeded
+    the evaluation budget.
+
+  FIX:
+    Initial population capped to min(POPULATION_SIZE, max_evals):
+
+        init_size = min(self.config.POPULATION_SIZE, max_evals)
+        population = [self.sampler() for _ in range(init_size)]
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #12  [HIGH]  Input validation — crash on population=0 or pop < tournament_k
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     src/genetic_algorithm.py
+  Method:   GeneticAlgorithm.__init__()
+
+  PROBLEM:
+    No validation on config values.  population=0 caused ValueError in
+    np.max([]).  population < TOURNAMENT_K caused ValueError in
+    random.sample().
+
+  FIX:
+    Added guards in __init__:
+
+        if pop is not None and pop < 1:
+            raise ValueError(...)
+        if tk is not None and pop is not None and tk > pop:
+            raise ValueError(...)
+        if mr is not None and not (0.0 <= mr <= 1.0):
+            raise ValueError(...)
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #13  [HIGH]  Visualization crash — GA/RS curve length mismatch
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     experiments/visualization.py
+
+  PROBLEM:
+    After adding elitism (FIX #1), GA evaluates POPULATION_SIZE - 1 offspring
+    per generation, while Random Search used chunk_size = POPULATION_SIZE.
+    This caused GA and RS convergence curves to have different lengths.
+    visualization.py used a single `steps` array derived from GA for both,
+    crashing on the RS plot.
+
+    NOTE: This was a regression introduced by FIX #1 (elitism).  The original
+    code did not have this problem.
+
+  FIX:
+    a) run_experiment.py: RS chunk_size changed from POPULATION_SIZE to
+       max(1, POPULATION_SIZE - 1) to match GA's per-generation eval count.
+
+    b) visualization.py: Refactored convergence plotting into a helper
+       function that creates independent x-axes for GA and RS curves,
+       so any remaining length differences are handled gracefully.
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #14  [HIGH]  report.tex — EO metric described without proxy caveat
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     report.tex  (Setup section, metrics list)
+
+  PROBLEM (NARRATIVE):
+    The metrics list called this "Equalized odds difference (EO diff, proxy)"
+    with only a brief mention.  The proxy nature was not explained until the
+    Reflection section, leaving readers to assume it was standard EO.
+
+  FIX:
+    Renamed to "Counterfactual prediction gap (EO proxy)" in the Setup
+    metrics list with an explicit inline explanation:
+
+        "...the maximum group-rate difference conditioned on counterfactual
+        model predictions obtained by flipping the sensitive attribute.
+        This is *not* standard equalized odds, which conditions on true
+        labels; generated inputs have no ground-truth labels, so
+        counterfactual predictions serve as a proxy."
+
+    Reflection section also updated to use the same terminology.
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #15  [MEDIUM]  report.tex — COMPAS race binarisation undocumented
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     report.tex  (Setup section)
+
+  PROBLEM (NARRATIVE):
+    COMPAS race has 6 categories.  The code binarises it as African-American
+    vs all others via alphabetical LabelEncoder.  The report did not mention
+    this binarisation choice.
+
+  FIX:
+    Sensitive attributes line now reads:
+
+        "race (COMPAS, binarised as African-American = 0 vs. all other
+        races = 1)"
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #16  [MEDIUM]  report.tex — DP/EO interpretation on biased samples
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     report.tex  (Setup section + Discussion section)
+
+  PROBLEM (NARRATIVE):
+    DP and EO proxy are computed on GA/RS-generated samples, not real data.
+    Because GA steers toward discriminatory regions, these are search-biased
+    metrics.  The report presented them alongside ID count/mean without
+    clarifying that they measure search effectiveness, not the model's actual
+    fairness.
+
+  FIX:
+    a) Setup: DP metric description now states "computed over *generated*
+       (not real-data) samples" and explains the implication.
+
+    b) Discussion: Added paragraph after the DP variance discussion:
+
+        "Readers should therefore interpret the DP and EO-proxy columns in
+        Table 1 as measures of *search-biased fairness gap* — i.e. how
+        large a disparity the search method can uncover — rather than as
+        estimates of the model's demographic parity or equalized odds on
+        the real data distribution."
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #17  [MEDIUM]  GENERATIONS dead code in _ga_config
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     experiments/run_experiment.py
+  Function: _ga_config()
+
+  PROBLEM:
+    _ga_config computed GENERATIONS from config.evaluation_budget() (always
+    50000) rather than the CLI --budget.  Since ga.run(n_evals=budget) always
+    provides n_evals, GENERATIONS was never read — pure dead code that
+    created confusion about which budget was actually used.
+
+  FIX:
+    Removed the GENERATIONS field from the SimpleNamespace entirely.
+    _resolve_max_evals() uses the explicit n_evals parameter.
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #18  [LOW]  advanced.txt outdated
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     advanced.txt
+
+  PROBLEM:
+    Still contained planning language ("Right now only Adult is tested")
+    despite all planned features having been implemented.
+
+  FIX:
+    Rewritten as a status-after-implementation document.  Each item now
+    marked [DONE] with a brief summary of what was implemented.
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #19  [LOW]  requirements.txt — no version constraints
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     requirements.txt
+
+  PROBLEM:
+    Package names listed without versions, risking breakage on future
+    API changes.
+
+  FIX:
+    Added compatible-release ranges:
+
+        numpy>=1.24,<2.0
+        pandas>=2.0,<3.1
+        scikit-learn>=1.3,<2.0
+        scipy>=1.10,<2.0
+        matplotlib>=3.7,<4.0
+
+
+================================================================================
+  ROUND 3 FIXES  (2026-03-19, third review pass)
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #20  [MEDIUM]  Sensitive attribute sampled as continuous float, not {0,1}
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     src/preprocessing.py
+
+  PROBLEM:
+    The categorical-feature fix (FIX #3) correctly identified LabelEncoded
+    columns, but the sensitive attribute was already converted to int {0,1}
+    by _normalize_sensitive() BEFORE the LabelEncoder loop.  Because
+    is_numeric_dtype(int) is True, the sensitive column was never added to
+    categorical_cols, so the sampler used np.random.uniform(0, 1) — producing
+    continuous floats like 0.37 instead of clean binary values.
+
+    While this did not invalidate results (RandomForest splits handle it, and
+    flip_sensitive always crosses the 0.5 boundary), it was an unintended gap
+    in the categorical fix.
+
+  FIX:
+    Explicitly add sensitive_index to categorical_indices:
+
+        # BEFORE
+        categorical_indices = frozenset(
+            col_list.index(c) for c in categorical_cols
+        )
+
+        # AFTER
+        categorical_indices = frozenset(
+            col_list.index(c) for c in categorical_cols
+        ) | {sensitive_index}
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #21  [MEDIUM]  statistical_test.py — no __main__ guard
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     experiments/statistical_test.py
+
+  PROBLEM:
+    All execution logic ran at module top-level.  Importing the module (e.g.
+    for testing or reuse of safe_wilcoxon_greater) would trigger file I/O
+    and print output as a side effect.
+
+  FIX:
+    Wrapped execution logic in main(), added if __name__ == "__main__" guard.
+    safe_wilcoxon_greater() remains importable without side effects.
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #22  [MEDIUM]  visualization.py — no __main__ guard
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     experiments/visualization.py
+
+  PROBLEM:
+    Same as FIX #21.  argparse, file loading, and plotting all ran at module
+    top-level.
+
+  FIX:
+    Wrapped in main() with if __name__ == "__main__" guard.
+    _plot_convergence() helper remains at module level for reuse.
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #23  [LOW]  Dead code — success_rate() and diversity() never called
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     src/metrics.py
+
+  PROBLEM:
+    success_rate() (lines 6-8) and diversity() (lines 10-12) were defined
+    but never imported or called anywhere in the project.
+
+  FIX:
+    Removed both functions.  search_efficiency() (which IS used) retained.
+
+
+================================================================================
+  REMAINING KNOWN ISSUES  (not fixed — design choices / future work)
+================================================================================
+
+  KNOWN #5  Mutation is conservative (per-individual, 1 gene)
+            → Acceptable with elitism; more aggressive schemes are future work.
+
+  KNOWN #6  German Credit bimodal ID-count statistics
+            → Mean ± std misleading; median+IQR recommended but not changed
+              to avoid altering published results.
+
+
+================================================================================
+  ROUND 4 FIXES  (2026-03-19, fourth review pass)
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #24  [MEDIUM]  Mutation σ=0.1 hardcoded — ineffective for wide-range features
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     src/genetic_algorithm.py
+  Method:   mutate()
+
+  PROBLEM:
+    Gaussian mutation used a fixed σ=0.1 for all continuous features.  For
+    features like capital-gain (range [0, 99999]), this perturbation is
+    0.0001% of the range — effectively a no-op.  Only features with range ≈1
+    received meaningful mutation.
+
+        # BEFORE
+        x[idx] += np.random.normal(0, 0.1)
+
+  FIX:
+    σ is now 5% of the feature range, ensuring mutation is proportional to
+    each feature's scale:
+
+        # AFTER
+        lo, hi = self.feature_ranges[idx]
+        sigma = (hi - lo) * 0.05
+        x[idx] += np.random.normal(0, max(sigma, 1e-9))
+        x[idx] = np.clip(x[idx], lo, hi)
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #25  [LOW]  Dead code path — numeric sensitive attr median binarisation
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     src/preprocessing.py
+  Function: _normalize_sensitive()
+
+  PROBLEM:
+    When a numeric sensitive attribute had >2 unique values, the code silently
+    binarised at the median.  No current dataset triggers this path, and
+    implicit median-based binarisation is a questionable default for fairness.
+
+        # BEFORE (line 14)
+        return (s > s.median()).astype(int)
+
+  FIX:
+    Replaced with an explicit ValueError requiring the user to provide a
+    binary attribute or explicit mapping:
+
+        raise ValueError(
+            f"Numeric sensitive attribute has {len(unique)} unique values ..."
+        )
+
+
+────────────────────────────────────────────────────────────────────────────────
+FIX #26  [LOW]  download_adult.py always overwrites existing data
+────────────────────────────────────────────────────────────────────────────────
+
+  File:     scripts/download_adult.py
+  Function: download_adult_dataset()
+
+  PROBLEM:
+    Unlike download_benchmark_datasets.py (which checks if the file exists
+    and skips), download_adult.py always downloaded and overwrote adult.csv.
+
+  FIX:
+    Added existence check consistent with the benchmark downloader:
+
+        if os.path.exists(OUTPUT_PATH):
+            print(f"[skip] exists: {OUTPUT_PATH}")
+            return
+
+
+================================================================================
+  REMAINING KNOWN ISSUES  (not fixed — design choices / future work)
+================================================================================
+
+  KNOWN #5  Mutation is conservative (per-individual, 1 gene)
+            → Acceptable with elitism; more aggressive schemes are future work.
+
+  KNOWN #6  German Credit bimodal ID-count statistics
+            → Mean ± std misleading; median+IQR recommended but not changed
+              to avoid altering published results.
+
+
+================================================================================
+  FILES MODIFIED (cumulative, all rounds)
+================================================================================
+
+  src/genetic_algorithm.py     — Elitism, running best_curve, categorical
+                                 mutation, crossover clip removal, budget cap,
+                                 input validation, range-scaled mutation σ
+  src/random_search.py         — Running best_curve
+  src/utils.py                 — Integer sampling for categorical features
+  src/preprocessing.py         — Returns categorical_indices; sensitive_index
+                                 included in categorical set; dead median path
+                                 replaced with ValueError
+  src/model.py                 — Removed unused import and dead function
+  src/metrics.py               — Removed dead code (success_rate, diversity)
+  src/__init__.py              — Created (empty, marks src as a package)
+  experiments/run_experiment.py — main() wrapping, accuracy logging,
+                                 categorical_indices plumbing, seed fix,
+                                 GENERATIONS dead code removed, RS chunk_size
+  experiments/statistical_test.py — main() wrapping
+  experiments/visualization.py — main() wrapping, independent x-axes for
+                                 GA/RS convergence curves
+  scripts/download_adult.py    — Skip download if file already exists
+  scripts/download_benchmark_datasets.py — German Credit "unknown" → NaN
+  report.tex                   — EO proxy caveat, COMPAS race binarisation,
+                                 DP/EO interpretation warning
+  advanced.txt                 — Rewritten as post-implementation status
+  requirements.txt             — Version ranges added
+
+================================================================================

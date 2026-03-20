@@ -6,6 +6,9 @@ _DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 OUTPUT_PATH = os.path.join(_DATA_DIR, "adult.csv")
 
 def download_adult_dataset():
+    if os.path.exists(OUTPUT_PATH):
+        print(f"[skip] exists: {OUTPUT_PATH}")
+        return
 
     columns = [
         "age", "workclass", "fnlwgt", "education", "education-num",

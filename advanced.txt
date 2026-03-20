@@ -1,38 +1,45 @@
-Extension plan — things to do before final submission
-====================================================
+Extension plan — status after implementation
+=============================================
 
-Core problem stays the same: AI Model Fairness Testing, GA vs Random Search.
-These are improvements to the evaluation side only. Nothing changes in the
-algorithm or the baseline.
+Core problem: AI Model Fairness Testing, GA vs Random Search.
+All items below have been implemented. Nothing changes in the
+baseline comparison design (same budget, same classifier, same seeds).
 
-1) Multiple datasets
-   - Right now only Adult is tested.  That's not enough to say anything general.
-   - Add COMPAS and German Credit so we can see if results hold across
-     different data distributions.
-   - Keep everything else identical (same classifier, same budget, same config).
+1) Multiple datasets                                            [DONE]
+   - Adult, COMPAS, and German Credit are all supported.
+   - Controlled via --datasets flag in run_experiment.py.
+   - Results are saved per-dataset under experiments/results/<key>/.
 
-2) Multiple fairness metrics
-   - Individual discrimination alone is a narrow view.
-   - Also compute demographic parity difference and equalized odds difference.
-   - Run the statistical test separately for each metric.
+2) Multiple fairness metrics                                    [DONE]
+   - Individual discrimination count and mean.
+   - Demographic parity difference (computed over generated samples;
+     reflects search effectiveness, not the model's real-data DP).
+   - Counterfactual prediction gap (EO proxy; conditions on
+     counterfactual model predictions, not true labels).
+   - Wilcoxon signed-rank test run separately for each metric.
 
-3) Hyperparameter sensitivity
-   - GA results could just be lucky parameter picks.
-   - Vary population size (10, 20, 40) and mutation rate (0.05, 0.1, 0.2).
-   - Keep total budget constant so comparison stays fair.
+3) Hyperparameter sensitivity                                   [DONE]
+   - Population size {10, 20, 40} x mutation rate {0.05, 0.1, 0.2}.
+   - Total budget kept constant so comparison stays fair.
+   - Enabled via --with-sensitivity flag.
 
-4) Convergence curves
-   - Only showing final numbers doesn't prove the GA is actually *learning*.
-   - Record best and mean fitness per generation and plot them.
-   - If the curve is flat, GA is basically doing random search with extra steps.
+4) Convergence curves                                           [DONE]
+   - Running-best and per-generation mean recorded.
+   - Best curve is monotonically non-decreasing (running maximum).
+   - Visualised with mean ± std across trials.
 
-5) Better related work section
-   - Current section is too thin.  Need to mention search-based testing,
-     fairness testing tools, and evolutionary optimization properly.
-   - Use proper references (IEEE style).
+5) Better related work section                                  [DONE]
+   - Covers fairness definitions, testing tools (Themis, Aequitas,
+     white-box methods), and SBSE background.
+   - Proper IEEE-style references.
 
-What this should achieve:
-- Stronger statistical evidence (more trials, more datasets, more metrics).
-- Shows the algorithm is robust (sensitivity + convergence).
-- Better academic positioning (expanded related work).
-- Still one problem, one baseline, one tool — fully within project scope.
+6) Elitism                                                      [DONE]
+   - Best individual is preserved across generations.
+   - Inner loop generates POPULATION_SIZE - 1 offspring per generation.
+
+7) Categorical feature handling                                 [DONE]
+   - LabelEncoded columns are identified during preprocessing.
+   - Sampler and mutation use integer sampling for those features.
+
+8) Model accuracy logging                                       [DONE]
+   - Train/test accuracy printed and saved in combined_results.json.
