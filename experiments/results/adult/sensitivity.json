@@ -1,0 +1,74 @@
+[
+  {
+    "population_size": 10,
+    "mutation_rate": 0.05,
+    "mean_discriminatory_cases": 36349.6,
+    "std_discriminatory_cases": 18277.988232844447,
+    "mean_score": 0.20592504000000003,
+    "std_score": 0.02331453491276206
+  },
+  {
+    "population_size": 10,
+    "mutation_rate": 0.1,
+    "mean_discriminatory_cases": 38463.8,
+    "std_discriminatory_cases": 19248.01528885511,
+    "mean_score": 0.22913996000000006,
+    "std_score": 0.04709814868894951
+  },
+  {
+    "population_size": 10,
+    "mutation_rate": 0.2,
+    "mean_discriminatory_cases": 43727.6,
+    "std_discriminatory_cases": 3392.4272490357107,
+    "mean_score": 0.24176152,
+    "std_score": 0.07655961284798665
+  },
+  {
+    "population_size": 20,
+    "mutation_rate": 0.05,
+    "mean_discriminatory_cases": 48437.2,
+    "std_discriminatory_cases": 1668.3826179866535,
+    "mean_score": 0.24406664000000006,
+    "std_score": 0.016147562398529346
+  },
+  {
+    "population_size": 20,
+    "mutation_rate": 0.1,
+    "mean_discriminatory_cases": 41596.8,
+    "std_discriminatory_cases": 7670.960445732985,
+    "mean_score": 0.21927280000000007,
+    "std_score": 0.029926460047523168
+  },
+  {
+    "population_size": 20,
+    "mutation_rate": 0.2,
+    "mean_discriminatory_cases": 46591.2,
+    "std_discriminatory_cases": 1014.014082742444,
+    "mean_score": 0.24830248,
+    "std_score": 0.03685275562399099
+  },
+  {
+    "population_size": 40,
+    "mutation_rate": 0.05,
+    "mean_discriminatory_cases": 49173.6,
+    "std_discriminatory_cases": 329.1422792653657,
+    "mean_score": 0.28208508000000004,
+    "std_score": 0.03141284896104779
+  },
+  {
+    "population_size": 40,
+    "mutation_rate": 0.1,
+    "mean_discriminatory_cases": 48056.8,
+    "std_discriminatory_cases": 1893.27065154457,
+    "mean_score": 0.26155604000000005,
+    "std_score": 0.046337751160693955
+  },
+  {
+    "population_size": 40,
+    "mutation_rate": 0.2,
+    "mean_discriminatory_cases": 47999.0,
+    "std_discriminatory_cases": 470.5048352567697,
+    "mean_score": 0.2460976,
+    "std_score": 0.007982443999678243
+  }
+]
